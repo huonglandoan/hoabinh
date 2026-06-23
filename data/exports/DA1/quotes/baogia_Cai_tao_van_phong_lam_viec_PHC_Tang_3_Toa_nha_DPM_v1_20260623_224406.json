@@ -3,7 +3,10 @@
         "project_name": "Cải tạo văn phòng làm việc P.HC - Tầng 3 Tòa nhà DPM",
         "location": "Tầng 3 Tòa nhà DPM, Cà Mau",
         "start_date": "2026-03-01",
-        "expected_completion_date": "2026-04-30"
+        "expected_completion_date": "2026-04-30",
+        "client_name": "Ban QLDA DPM",
+        "contractor_name": "Công ty Xây dựng Đông Dương",
+        "vat_percent": 8
     },
     "items": [
         {
@@ -13,18 +16,7 @@
             "quoted_quantity": 320.0,
             "original_unit_price": 65000.0,
             "approval_status": "Chờ duyệt",
-            "po_list": [
-                {
-                    "po_code": "PO-2026-001",
-                    "po_date": "2026-03-10",
-                    "delivered_quantity": 200.0
-                },
-                {
-                    "po_code": "PO-2026-002",
-                    "po_date": "2026-03-25",
-                    "delivered_quantity": 120.0
-                }
-            ],
+            "po_list": [],
             "amount": 20800000.0
         },
         {
@@ -34,13 +26,7 @@
             "quoted_quantity": 150.0,
             "original_unit_price": 280000.0,
             "approval_status": "Chờ duyệt",
-            "po_list": [
-                {
-                    "po_code": "PO-2026-003",
-                    "po_date": "2026-03-12",
-                    "delivered_quantity": 150.0
-                }
-            ],
+            "po_list": [],
             "amount": 42000000.0
         },
         {
@@ -50,13 +36,7 @@
             "quoted_quantity": 85.0,
             "original_unit_price": 320000.0,
             "approval_status": "Chờ duyệt",
-            "po_list": [
-                {
-                    "po_code": "PO-2026-004",
-                    "po_date": "2026-03-18",
-                    "delivered_quantity": 85.0
-                }
-            ],
+            "po_list": [],
             "amount": 27200000.0
         },
         {
@@ -80,8 +60,11 @@
             "amount": 13500000.0
         }
     ],
-    "total_contract_value": 118700000.0,
+    "subtotal": 118700000.0,
+    "vat_percent": 8.0,
+    "vat_amount": 9496000.0,
+    "total_contract_value": 128196000.0,
     "version": "v1",
-    "generated_at": "2026-06-22 21:27:29",
+    "generated_at": "2026-06-23 22:44:06",
     "warnings": []
 }

@@ -20,11 +20,13 @@ export class PaymentService {
     const masterJsonPath = path.join(this.rootDataPath, 'master', projectId, `baogia_${projectId}.json`);
     let hasQuote = false;
     let quoteItems = [];
+    let projectInfo = null;
     
     try {
       const data = await fs.readFile(masterJsonPath, 'utf-8');
       const quoteData = JSON.parse(data);
       quoteItems = quoteData.items || [];
+      projectInfo = quoteData.project_info || null;
       hasQuote = true;
     } catch {}
 
@@ -103,6 +105,7 @@ export class PaymentService {
     return {
       hasQuote,
       quoteItems,
+      projectInfo,
       history,
     };
   }

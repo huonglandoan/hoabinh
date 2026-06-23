@@ -190,10 +190,14 @@ def build_pdf(quote_data, out_path):
         if status == "Đã loại bỏ":
             continue # Don't print removed items to client quote PDF!
             
+        name_val = item.get("item_name", "")
+        if item.get("is_extra"):
+            name_val += " (Phát sinh)"
+            
         row_cells = [
             Paragraph(str(stt), cell_center_style),
             Paragraph(item.get("item_code", ""), cell_center_style),
-            Paragraph(item.get("item_name", ""), cell_style),
+            Paragraph(name_val, cell_style),
             Paragraph(item.get("unit", ""), cell_center_style),
             Paragraph(format_currency(item.get("quoted_quantity", 0)), cell_right_style),
             Paragraph(format_currency(item.get("original_unit_price", 0)), cell_right_style),
@@ -209,10 +213,44 @@ def build_pdf(quote_data, out_path):
         stt += 1
         
     # Total row
-    total_row = current_row
-    total_cells = [Paragraph("<b>TỔNG GIÁ TRỊ HỢP ĐỒNG (VND)</b>", cell_total_style)] + [Paragraph("", cell_style)] * 5
-    total_cells.append(Paragraph(f"<b>{format_currency(quote_data.get('total_contract_value', 0))}</b>", cell_total_style))
+    subtotal = quote_data.get("subtotal")
+    if subtotal is None:
+        subtotal = sum(
+            item.get("amount", 0) for item in quote_data.get("items", []) if item.get("approval_status") != "Đã loại bỏ"
+        )
     
+    proj = quote_data.get("project_info", {})
+    vat_percent = float(proj.get("vat_percent") or quote_data.get("vat_percent") or 0)
+    
+    if vat_percent > 0:
+        # Cộng tiền hàng
+        subtotal_row = current_row
+        subtotal_cells = [Paragraph("<b>Cộng tiền hàng (VND)</b>", cell_total_style)] + [Paragraph("", cell_style)] * 5
+        subtotal_cells.append(Paragraph(f"<b>{format_currency(subtotal)}</b>", cell_total_style))
+        table_data.append(subtotal_cells)
+        t_styles.extend([
+            ('SPAN', (0, subtotal_row), (5, subtotal_row)),
+            ('BACKGROUND', (0, subtotal_row), (-1, subtotal_row), colors.HexColor('#F8FAFC')),
+        ])
+        current_row += 1
+        
+        # Thuế VAT
+        vat_amount = subtotal * (vat_percent / 100.0)
+        vat_row = current_row
+        vat_cells = [Paragraph(f"<b>Thuế VAT ({int(vat_percent) if vat_percent.is_integer() else vat_percent}%)</b>", cell_total_style)] + [Paragraph("", cell_style)] * 5
+        vat_cells.append(Paragraph(f"<b>{format_currency(vat_amount)}</b>", cell_total_style))
+        table_data.append(vat_cells)
+        t_styles.extend([
+            ('SPAN', (0, vat_row), (5, vat_row)),
+            ('BACKGROUND', (0, vat_row), (-1, vat_row), colors.HexColor('#F8FAFC')),
+        ])
+        current_row += 1
+        
+    # Tổng giá trị hợp đồng
+    total_row = current_row
+    total_val = subtotal * (1 + vat_percent / 100.0) if vat_percent > 0 else subtotal
+    total_cells = [Paragraph("<b>TỔNG GIÁ TRỊ HỢP ĐỒNG (VND)</b>", cell_total_style)] + [Paragraph("", cell_style)] * 5
+    total_cells.append(Paragraph(f"<b>{format_currency(total_val)}</b>", cell_total_style))
     table_data.append(total_cells)
     t_styles.extend([
         ('SPAN', (0, total_row), (5, total_row)),

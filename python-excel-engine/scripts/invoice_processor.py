@@ -43,6 +43,14 @@ def format_currency(val):
     except (ValueError, TypeError):
         return str(val)
 
+def get_display_name(item):
+    name = item.get("item_name", "")
+    if item.get("is_extra") or item.get("isExtra"):
+        if not name.endswith("(Phát sinh)"):
+            name += " (Phát sinh)"
+    return name
+
+
 def generate_payment_package(input_data_path, project_id=None):
     with open(input_data_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
@@ -165,7 +173,7 @@ def build_excel_sheets(data, out_path):
     r_idx = 10
     for idx, item in enumerate(items, 1):
         ws1.cell(row=r_idx, column=1, value=idx)
-        ws1.cell(row=r_idx, column=2, value=item.get("item_name", ""))
+        ws1.cell(row=r_idx, column=2, value=get_display_name(item))
         ws1.cell(row=r_idx, column=3, value=item.get("unit", ""))
         ws1.cell(row=r_idx, column=4, value=float(item.get("contract_quantity") or 0))
         ws1.cell(row=r_idx, column=5, value=float(item.get("unit_price") or 0))
@@ -244,7 +252,7 @@ def build_excel_sheets(data, out_path):
     r_idx = 8
     for idx, item in enumerate(items, 1):
         ws2.cell(row=r_idx, column=1, value=idx)
-        ws2.cell(row=r_idx, column=2, value=item.get("item_name", ""))
+        ws2.cell(row=r_idx, column=2, value=get_display_name(item))
         ws2.cell(row=r_idx, column=3, value=item.get("unit", ""))
         
         # Link contract quantity to BAO_GIA
@@ -298,7 +306,7 @@ def build_excel_sheets(data, out_path):
     r_idx = 4
     for idx, item in enumerate(items, 1):
         ws3.cell(row=r_idx, column=1, value=idx)
-        ws3.cell(row=r_idx, column=2, value=item.get("item_name", ""))
+        ws3.cell(row=r_idx, column=2, value=get_display_name(item))
         
         # Link contract quantity, price, contract amount from BAO_GIA
         ws3.cell(row=r_idx, column=3, value=f"=BAO_GIA!D{9+idx}")
@@ -631,7 +639,7 @@ def build_combined_pdf(data, out_path):
         
         bg = colors.white if idx % 2 != 0 else colors.HexColor('#EBF3FB')
         bg_rows.append([
-            Paragraph(str(idx), cell_center), Paragraph(item.get("item_name", ""), cell_style),
+            Paragraph(str(idx), cell_center), Paragraph(get_display_name(item), cell_style),
             Paragraph(item.get("unit", ""), cell_center), Paragraph(format_currency(qty), cell_right),
             Paragraph(format_currency(prc), cell_right), Paragraph(format_currency(amt), cell_right)
         ])
@@ -681,7 +689,7 @@ def build_combined_pdf(data, out_path):
         
         bg = colors.white if idx % 2 != 0 else colors.HexColor('#EBF3FB')
         nt_rows.append([
-            Paragraph(str(idx), cell_center), Paragraph(item.get("item_name", ""), cell_style),
+            Paragraph(str(idx), cell_center), Paragraph(get_display_name(item), cell_style),
             Paragraph(item.get("unit", ""), cell_center), Paragraph(format_currency(c_qty), cell_right),
             Paragraph(format_currency(a_qty), cell_right), Paragraph(format_currency(prc), cell_right),
             Paragraph(format_currency(amt), cell_right)
@@ -745,7 +753,7 @@ def build_combined_pdf(data, out_path):
         
         bg = colors.white if idx % 2 != 0 else colors.HexColor('#EBF3FB')
         qt_rows.append([
-            Paragraph(str(idx), cell_center), Paragraph(item.get("item_name", ""), cell_style),
+            Paragraph(str(idx), cell_center), Paragraph(get_display_name(item), cell_style),
             Paragraph(format_currency(c_qty), cell_right), Paragraph(format_currency(c_val), cell_right),
             Paragraph(format_currency(a_qty), cell_right), Paragraph(format_currency(a_val), cell_right),
             Paragraph(format_currency(diff), cell_right)

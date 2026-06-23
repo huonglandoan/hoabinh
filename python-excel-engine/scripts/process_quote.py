@@ -54,7 +54,6 @@ def process_quote(quote_data_path, po_data_path, existing_quote_path=None, proje
         
     # Determine version and status mapping from existing quote
     version = "v1"
-    existing_items_map = {}
     
     if existing_quote:
         old_ver = existing_quote.get("version", "v1")
@@ -65,36 +64,69 @@ def process_quote(quote_data_path, po_data_path, existing_quote_path=None, proje
                 version = "v2"
         else:
             version = "v2"
-            
-        # Map old items by code
-        for item in existing_quote.get("items", []):
-            existing_items_map[item.get("item_code")] = item
 
+    is_variation = project_info.get("is_variation_quote", False)
     final_items = []
+    
+    # Load all existing non-removed items first to preserve them
+    if existing_quote:
+        for old_item in existing_quote.get("items", []):
+            if old_item.get("approval_status") != "Đã loại bỏ":
+                final_items.append(old_item.copy())
+
+    # Map existing items by code for quick lookup
+    existing_items_by_code = {item["item_code"]: item for item in final_items}
     
     # Process items, assign status, calculate Thành tiền
     for item in validated_items:
         code = item["item_code"]
-        # Default status
         approval_status = "Chờ duyệt"
         
-        # If it existed before, carry over status unless requested otherwise
-        if code in existing_items_map:
-            old_item = existing_items_map[code]
-            approval_status = old_item.get("approval_status", "Chờ duyệt")
-            if (old_item.get("quoted_quantity") != item["quoted_quantity"] or 
-                old_item.get("original_unit_price") != item["original_unit_price"]):
-                warnings.append(f"Hạng mục {code} thay đổi số lượng hoặc đơn giá so với phiên bản cũ.")
+        if is_variation:
+            # Under a variation quote, all new/modified inputs are marked as extras
+            item["is_extra"] = True
             
-        item["approval_status"] = approval_status
-        item["po_list"] = []
-        # Value calculation (for Python representation, although Excel uses formulas)
-        item["amount"] = item["quoted_quantity"] * item["original_unit_price"]
-        final_items.append(item)
-        
-    # Check if any old items were removed
-    if existing_quote:
-        for old_code, old_item in existing_items_map.items():
+            # If the item code already exists in contract, assign a suffix to avoid duplicate keys
+            if code in existing_items_by_code:
+                item["item_code"] = f"{code}_PS"
+                old_item = existing_items_by_code[code]
+                if old_item.get("original_unit_price") != item["original_unit_price"]:
+                    warnings.append(f"Hạng mục phát sinh {code} có đơn giá khác đơn giá gốc.")
+            
+            item["approval_status"] = approval_status
+            item["po_list"] = []
+            item["amount"] = item["quoted_quantity"] * item["original_unit_price"]
+            final_items.append(item)
+            
+        else:
+            # Normal contract version (non-variation): updates and overrides standard items
+            item["is_extra"] = item.get("is_extra", False)
+            if code in existing_items_by_code:
+                old_item = existing_items_by_code[code]
+                approval_status = old_item.get("approval_status", "Chờ duyệt")
+                if (old_item.get("quoted_quantity") != item["quoted_quantity"] or 
+                    old_item.get("original_unit_price") != item["original_unit_price"]):
+                    warnings.append(f"Hạng mục {code} thay đổi số lượng hoặc đơn giá so với phiên bản cũ.")
+            
+            item["approval_status"] = approval_status
+            item["po_list"] = []
+            item["amount"] = item["quoted_quantity"] * item["original_unit_price"]
+            
+            # Replace the existing item in final_items if it matches by code
+            found = False
+            for i, old_it in enumerate(final_items):
+                if old_it["item_code"] == code:
+                    final_items[i] = item
+                    found = True
+                    break
+            if not found:
+                final_items.append(item)
+                
+    # Check if any old items were removed (only for normal contract revisions, not variations)
+    if existing_quote and not is_variation:
+        seen_codes = {item["item_code"] for item in validated_items}
+        for old_item in existing_quote.get("items", []):
+            old_code = old_item.get("item_code")
             if old_code not in seen_codes and old_item.get("approval_status") != "Đã loại bỏ":
                 warnings.append(f"Hạng mục {old_code} ({old_item.get('item_name')}) đã bị loại bỏ ở phiên bản mới.")
                 # Mark as removed and keep for audit trail
@@ -105,14 +137,20 @@ def process_quote(quote_data_path, po_data_path, existing_quote_path=None, proje
                 final_items.append(removed_item)
 
     # Calculate total contract value (sum of amounts of non-removed items)
-    total_contract_value = sum(
+    subtotal = sum(
         item["amount"] for item in final_items if item.get("approval_status") != "Đã loại bỏ"
     )
+    vat_percent = float(project_info.get("vat_percent") or 0)
+    vat_amount = subtotal * (vat_percent / 100.0)
+    total_contract_value = subtotal + vat_amount
 
     # Generate processed structure
     processed_quote = {
         "project_info": project_info,
         "items": final_items,
+        "subtotal": subtotal,
+        "vat_percent": vat_percent,
+        "vat_amount": vat_amount,
         "total_contract_value": total_contract_value,
         "version": version,
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

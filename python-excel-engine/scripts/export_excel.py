@@ -9,7 +9,8 @@ from core_excel_utils import (
     autofit_column_widths,
     FMT_CURRENCY,
     FMT_DATE,
-    COLOR_ZEBRA_BG
+    COLOR_ZEBRA_BG,
+    BORDER_THIN_GRAY
 )
 
 def format_date_vietnam(date_str):
@@ -106,7 +107,12 @@ def build_workbook(quote_data, out_path):
         # Write Item Details
         ws.cell(row=current_row, column=1, value=stt)
         ws.cell(row=current_row, column=2, value=item.get("item_code", ""))
-        ws.cell(row=current_row, column=3, value=item.get("item_name", ""))
+        
+        name_val = item.get("item_name", "")
+        if item.get("is_extra"):
+            name_val += " (Phát sinh)"
+        ws.cell(row=current_row, column=3, value=name_val)
+        
         ws.cell(row=current_row, column=4, value=item.get("unit", ""))
         ws.cell(row=current_row, column=5, value=item.get("quoted_quantity", 0))
         ws.cell(row=current_row, column=6, value=item.get("original_unit_price", 0))
@@ -144,13 +150,59 @@ def build_workbook(quote_data, out_path):
         current_row += 1
         stt += 1
         
-    # Total Row
+    # Total Rows
+    vat_percent = float(project_info.get("vat_percent") or quote_data.get("vat_percent") or 0)
+    
+    if vat_percent > 0:
+        # Cộng tiền hàng (VND)
+        subtotal_row = current_row
+        ws.merge_cells(f"A{subtotal_row}:F{subtotal_row}")
+        subtotal_label = ws.cell(row=subtotal_row, column=1, value="Cộng tiền hàng (VND)")
+        subtotal_val_cell = ws.cell(row=subtotal_row, column=7, value=f"=SUM(G11:G{subtotal_row-1})")
+        
+        # Format subtotal row
+        for col_idx in range(1, 9):
+            cell = ws.cell(row=subtotal_row, column=col_idx)
+            cell.font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+            cell.border = BORDER_THIN_GRAY
+            if col_idx == 1:
+                cell.alignment = openpyxl.styles.Alignment(horizontal="right", vertical="center")
+            elif col_idx == 7:
+                cell.alignment = openpyxl.styles.Alignment(horizontal="right", vertical="center")
+                cell.number_format = FMT_CURRENCY
+        
+        current_row += 1
+        
+        # Thuế VAT (X%)
+        vat_row = current_row
+        ws.merge_cells(f"A{vat_row}:F{vat_row}")
+        vat_label = ws.cell(row=vat_row, column=1, value=f"Thuế VAT ({int(vat_percent) if vat_percent.is_integer() else vat_percent}%)")
+        vat_val_cell = ws.cell(row=vat_row, column=7, value=f"=G{subtotal_row}*{vat_percent/100.0}")
+        
+        # Format VAT row
+        for col_idx in range(1, 9):
+            cell = ws.cell(row=vat_row, column=col_idx)
+            cell.font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+            cell.border = BORDER_THIN_GRAY
+            if col_idx == 1:
+                cell.alignment = openpyxl.styles.Alignment(horizontal="right", vertical="center")
+            elif col_idx == 7:
+                cell.alignment = openpyxl.styles.Alignment(horizontal="right", vertical="center")
+                cell.number_format = FMT_CURRENCY
+                
+        current_row += 1
+        
+    # TỔNG GIÁ TRỊ HỢP ĐỒNG (VND)
     total_row = current_row
     ws.merge_cells(f"A{total_row}:F{total_row}")
     total_label = ws.cell(row=total_row, column=1, value="TỔNG GIÁ TRỊ HỢP ĐỒNG (VND)")
     apply_total_style(total_label, align="right")
     
-    total_val_cell = ws.cell(row=total_row, column=7, value=f"=SUM(G11:G{total_row-1})")
+    if vat_percent > 0:
+        total_val_cell = ws.cell(row=total_row, column=7, value=f"=G{subtotal_row}+G{vat_row}")
+    else:
+        total_val_cell = ws.cell(row=total_row, column=7, value=f"=SUM(G11:G{total_row-1})")
+        
     apply_total_style(total_val_cell, align="right", num_format=FMT_CURRENCY)
     
     # Format rest of total row

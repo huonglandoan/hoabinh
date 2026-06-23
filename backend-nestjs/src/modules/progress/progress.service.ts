@@ -64,6 +64,39 @@ export class ProgressService {
       } catch (e) {}
     }
 
+    // Sync new items from master quote to progress plan if it exists
+    if (contract_signed && hasPlan && quoteData) {
+      try {
+        const planContent = await fs.readFile(planPath, 'utf-8');
+        const planData = JSON.parse(planContent);
+        const planItems = planData.items || [];
+        const planCodes = new Set(planItems.map((it: any) => it.item_code));
+
+        let updated = false;
+        for (const quoteItem of quoteData.items || []) {
+          if (!planCodes.has(quoteItem.item_code)) {
+            planItems.push({
+              item_code: quoteItem.item_code,
+              item_name: quoteItem.item_name,
+              unit: quoteItem.unit,
+              planned_quantity: quoteItem.quoted_quantity,
+              planned_start_date: quoteData.project_info.signed_at ? quoteData.project_info.signed_at.split('T')[0] : quoteData.project_info.start_date,
+              planned_end_date: quoteData.project_info.expected_completion_date,
+              milestone_name: 'Mốc tổng thể'
+            });
+            updated = true;
+          }
+        }
+
+        if (updated) {
+          planData.items = planItems;
+          await fs.writeFile(planPath, JSON.stringify(planData, null, 2), 'utf-8');
+        }
+      } catch (e) {
+        this.logger.error('Failed to sync new variation items to progress plan', e as any);
+      }
+    }
+
     let currentReport = null;
     try {
       const data = await fs.readFile(masterJsonPath, 'utf-8');
@@ -108,6 +141,46 @@ export class ProgressService {
           project_percent_complete: 0
         };
       } catch (e) {}
+    }
+
+    // Ensure any new items in quoteData are reflected in currentReport in memory
+    if (contract_signed && currentReport && quoteData) {
+      const reportItems = currentReport.items || [];
+      const reportCodes = new Set(reportItems.map((it: any) => it.item_code));
+      let reportUpdated = false;
+
+      for (const quoteItem of quoteData.items || []) {
+        if (!reportCodes.has(quoteItem.item_code)) {
+          const startDate = quoteData.project_info.signed_at ? quoteData.project_info.signed_at.split('T')[0] : quoteData.project_info.start_date;
+          const expectedCompletionDate = quoteData.project_info.expected_completion_date;
+          reportItems.push({
+            item_code: quoteItem.item_code,
+            item_name: quoteItem.item_name,
+            unit: quoteItem.unit,
+            milestone_name: 'Mốc tổng thể',
+            planned_quantity: quoteItem.quoted_quantity,
+            actual_quantity: 0,
+            variance_quantity: -quoteItem.quoted_quantity,
+            percent_complete: 0,
+            planned_start_date: startDate,
+            planned_end_date: expectedCompletionDate,
+            actual_start_date: null,
+            actual_end_date: null,
+            delay_days: 0,
+            flag: 'Xanh',
+            site_notes: '',
+            is_variation: !!quoteItem.is_extra
+          });
+          reportUpdated = true;
+        }
+      }
+
+      if (reportUpdated) {
+        currentReport.items = reportItems;
+        try {
+          await fs.writeFile(masterJsonPath, JSON.stringify(currentReport, null, 2), 'utf-8');
+        } catch (e) {}
+      }
     }
 
     // Scan exports for history
