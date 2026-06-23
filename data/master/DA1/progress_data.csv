@@ -1,0 +1,11 @@
+﻿item_code,item_name,unit,milestone_name,planned_quantity,actual_quantity,variance_quantity,percent_complete,planned_start_date,planned_end_date,actual_start_date,actual_end_date,delay_days,flag,delay_reason,unit_price,planned_value,earned_value
+HM-001,Sơn tường,m2,Mốc 1 - Phần hoàn thiện,320.0,280.0,-40.0,87.5,2026-06-05,2026-06-11,2026-06-06,,12,Đỏ,chờ vật tư,65000.0,20800000.0,18200000.0
+HM-002,Trần thạch cao 60x60,m2,Mốc 1 - Phần hoàn thiện,150.0,150.0,0.0,100.0,2026-06-08,2026-06-18,2026-06-08,2026-06-18,0,Xanh,,280000.0,42000000.0,42000000.0
+HM-003,Lát sàn ceramic 60x60,m2,Mốc 1 - Phần hoàn thiện,85.0,85.0,0.0,100.0,2026-06-10,2026-06-20,2026-06-10,2026-06-20,0,Xanh,,320000.0,27200000.0,27200000.0
+HM-004,Cửa nhựa lõi thép,cái,Mốc 1 - Phần hoàn thiện,4.0,4.0,0.0,100.0,2026-06-12,2026-06-19,2026-06-12,2026-06-19,0,Xanh,,3800000.0,15200000.0,15200000.0
+HM-005,Đèn LED,bộ,Mốc 2 - Điện & cơ điện,24.0,20.0,-4.0,83.33333333333334,2026-06-15,2026-06-21,2026-06-15,,2,Vàng,chờ vật tư,750000.0,18000000.0,15000000.0
+HM-006,Ổ cắm điện âm tường,cái,Mốc 2 - Điện & cơ điện,30.0,30.0,0.0,100.0,2026-06-16,2026-06-23,2026-06-16,2026-06-23,0,Xanh,,0.0,0.0,0.0
+HM-007,Kính cường lực,m2,Mốc 1 - Phần hoàn thiện,18.0,10.0,-8.0,55.55555555555556,2026-06-09,2026-06-15,2026-06-09,,8,Đỏ,thay đổi thiết kế,0.0,0.0,0.0
+HM-008,Sơn chống thấm Sika,m2,Mốc 1 - Phần hoàn thiện,95.0,95.0,0.0,100.0,2026-06-10,2026-06-20,2026-06-10,2026-06-20,0,Xanh,,0.0,0.0,0.0
+HM-009,Vệ sinh sau thi công,m2,Mốc 3 - Dọn dẹp & bàn giao,605.0,0.0,-605.0,0.0,2026-06-24,2026-06-29,,,0,Xanh,,0.0,0.0,0.0
+HM-010,Vận chuyển vật liệu,ls,Mốc 3 - Dọn dẹp & bàn giao,1.0,0.0,-1.0,0.0,2026-06-25,2026-06-30,,,0,Xanh,,0.0,0.0,0.0

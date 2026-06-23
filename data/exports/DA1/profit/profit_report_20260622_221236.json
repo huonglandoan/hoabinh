@@ -1,0 +1,30 @@
+{
+    "project_id": "DA1",
+    "project_name": "DA1",
+    "budget_revenue": 0.0,
+    "actual_revenue": 0.0,
+    "expenses": {
+        "Vật tư": 0.0,
+        "Nhân công": 0.0,
+        "Vận chuyển": 0.0,
+        "Máy thi công": 0.0,
+        "Quản lý": 0.0,
+        "Khác": 0.0
+    },
+    "total_expenses": 0.0,
+    "gross_profit": 0.0,
+    "gross_margin": 0.0,
+    "net_profit": 0.0,
+    "net_margin": 0.0,
+    "profit_flag": "Đỏ",
+    "delayed_items": [],
+    "overrun_reasons": [
+        "Chi phí vật tư hoặc các nhà thầu phụ vượt quá dự phòng dự án ban đầu. Cần rà soát các hợp đồng cung ứng."
+    ],
+    "warnings": [
+        "Cảnh báo: Doanh thu thực tế bằng 0 hoặc chưa có dữ liệu báo giá/nghiệm thu.",
+        "Cảnh báo: Tỷ lệ lợi nhuận ròng (0.0%) dưới mức kỳ vọng 15%!"
+    ],
+    "invoices_count": 0,
+    "generated_at": "2026-06-22 22:12:36"
+}

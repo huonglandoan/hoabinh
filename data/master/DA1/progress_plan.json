@@ -1,0 +1,112 @@
+{
+  "project_info": {
+    "project_name": "Sửa chữa văn phòng P.HC – Tầng 3, Tòa nhà DPM",
+    "contract_code": "12/2025/HĐ-XD"
+  },
+  "milestones": [
+    {
+      "milestone_name": "Mốc 1 - Phần hoàn thiện",
+      "planned_end_date": "2026-06-20"
+    },
+    {
+      "milestone_name": "Mốc 2 - Điện & cơ điện",
+      "planned_end_date": "2026-06-25"
+    },
+    {
+      "milestone_name": "Mốc 3 - Dọn dẹp & bàn giao",
+      "planned_end_date": "2026-06-30"
+    }
+  ],
+  "items": [
+    {
+      "item_code": "HM-001",
+      "item_name": "Sơn tường",
+      "unit": "m2",
+      "planned_quantity": 320,
+      "planned_start_date": "2026-06-05",
+      "planned_end_date": "2026-06-11",
+      "milestone_name": "Mốc 1 - Phần hoàn thiện"
+    },
+    {
+      "item_code": "HM-002",
+      "item_name": "Trần thạch cao 60x60",
+      "unit": "m2",
+      "planned_quantity": 150,
+      "planned_start_date": "2026-06-08",
+      "planned_end_date": "2026-06-18",
+      "milestone_name": "Mốc 1 - Phần hoàn thiện"
+    },
+    {
+      "item_code": "HM-003",
+      "item_name": "Lát sàn ceramic 60x60",
+      "unit": "m2",
+      "planned_quantity": 85,
+      "planned_start_date": "2026-06-10",
+      "planned_end_date": "2026-06-20",
+      "milestone_name": "Mốc 1 - Phần hoàn thiện"
+    },
+    {
+      "item_code": "HM-004",
+      "item_name": "Cửa nhựa lõi thép",
+      "unit": "cái",
+      "planned_quantity": 4,
+      "planned_start_date": "2026-06-12",
+      "planned_end_date": "2026-06-19",
+      "milestone_name": "Mốc 1 - Phần hoàn thiện"
+    },
+    {
+      "item_code": "HM-005",
+      "item_name": "Đèn LED",
+      "unit": "bộ",
+      "planned_quantity": 24,
+      "planned_start_date": "2026-06-15",
+      "planned_end_date": "2026-06-21",
+      "milestone_name": "Mốc 2 - Điện & cơ điện"
+    },
+    {
+      "item_code": "HM-006",
+      "item_name": "Ổ cắm điện âm tường",
+      "unit": "cái",
+      "planned_quantity": 30,
+      "planned_start_date": "2026-06-16",
+      "planned_end_date": "2026-06-23",
+      "milestone_name": "Mốc 2 - Điện & cơ điện"
+    },
+    {
+      "item_code": "HM-007",
+      "item_name": "Kính cường lực",
+      "unit": "m2",
+      "planned_quantity": 18,
+      "planned_start_date": "2026-06-09",
+      "planned_end_date": "2026-06-15",
+      "milestone_name": "Mốc 1 - Phần hoàn thiện"
+    },
+    {
+      "item_code": "HM-008",
+      "item_name": "Sơn chống thấm Sika",
+      "unit": "m2",
+      "planned_quantity": 95,
+      "planned_start_date": "2026-06-10",
+      "planned_end_date": "2026-06-20",
+      "milestone_name": "Mốc 1 - Phần hoàn thiện"
+    },
+    {
+      "item_code": "HM-009",
+      "item_name": "Vệ sinh sau thi công",
+      "unit": "m2",
+      "planned_quantity": 605,
+      "planned_start_date": "2026-06-24",
+      "planned_end_date": "2026-06-29",
+      "milestone_name": "Mốc 3 - Dọn dẹp & bàn giao"
+    },
+    {
+      "item_code": "HM-010",
+      "item_name": "Vận chuyển vật liệu",
+      "unit": "ls",
+      "planned_quantity": 1,
+      "planned_start_date": "2026-06-25",
+      "planned_end_date": "2026-06-30",
+      "milestone_name": "Mốc 3 - Dọn dẹp & bàn giao"
+    }
+  ]
+}
