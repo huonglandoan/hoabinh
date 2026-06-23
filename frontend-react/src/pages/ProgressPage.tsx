@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import { mockProgressPlan, mockProgressLog, mockProgressReport, mockProgressHistory, mockQuotes, mockProjects, mockProgressReportDA1, mockProgressHistoryDA1 } from '../services/mockData';
+import { mockProgressPlan, mockProgressLog, mockProgressReport, mockProgressHistory, mockQuotes, mockAdditionalQuotes, mockProjects, mockProgressReportDA1, mockProgressHistoryDA1 } from '../services/mockData';
 import { 
   TrendingUp, 
   Calendar, 
@@ -138,9 +138,10 @@ export const ProgressPage: React.FC<ProgressPageProps> = ({ projectId, mockDataE
     try {
       if (mockDataEnabled) {
         const hasLocalStorageSigned = localStorage.getItem(`mock_contract_signed_${projectId}`) === 'true';
-        const signedQuoteInMock = mockQuotes.find(q => String(q.project_id) === String(projectId) && (q.contract_signed || q.project_info?.contract_signed));
+          const allMockQuotes = ([...(mockQuotes || []), ...(mockAdditionalQuotes || [])] as any[]);
+          const signedQuoteInMock = allMockQuotes.find(q => String(q.project_id) === String(projectId) && (q.contract_signed || q.project_info?.contract_signed));
         
-        if (hasLocalStorageSigned || signedQuoteInMock) {
+          if (hasLocalStorageSigned || signedQuoteInMock) {
           setContractSigned(true);
           const version = localStorage.getItem(`mock_signed_version_${projectId}`) || signedQuoteInMock?.version || 'v1';
           setSignedVersion(String(version));
@@ -156,7 +157,7 @@ export const ProgressPage: React.FC<ProgressPageProps> = ({ projectId, mockDataE
             reportData = JSON.parse(JSON.stringify(mockProgressReportDA1));
             historyVal = mockProgressHistoryDA1;
           } else {
-            const quote: any = signedQuoteInMock || mockQuotes.find(q => String(q.project_id) === String(projectId));
+            const quote: any = signedQuoteInMock || allMockQuotes.find(q => String(q.project_id) === String(projectId));
             const items = quote ? (quote.items || []) : [];
             const proj = mockProjects.find(p => String(p.id) === String(projectId));
             const projectName = proj?.name || quote?.project_info?.project_name || `Dự án ${projectId}`;
@@ -247,10 +248,20 @@ export const ProgressPage: React.FC<ProgressPageProps> = ({ projectId, mockDataE
             reportData.items = reportItems;
           }
 
-          setData(reportData);
+            setData(reportData);
           setHasPlan(hasPlanVal);
           setHistory(historyVal);
           setWarnings([]);
+          // Seed demo plan/log only when we actually have a signed mock quote (avoid creating progress for unsigned projects)
+          try {
+            if (mockDataEnabled && (signedQuoteInMock || hasLocalStorageSigned)) {
+              setPlanInput(JSON.stringify(mockProgressPlan, null, 2));
+              setLogInput(JSON.stringify(mockProgressLog, null, 2));
+              setTodayStr("2026-06-23");
+            }
+          } catch (e) {
+            // no-op
+          }
         } else {
           setContractSigned(false);
           setSignedVersion('');
@@ -281,10 +292,8 @@ export const ProgressPage: React.FC<ProgressPageProps> = ({ projectId, mockDataE
     setData(null);
     setHistory([]);
     loadProgressInfo();
-    if (mockDataEnabled) {
-      handleDemoPlan();
-      handleDemoLog();
-    } else {
+    // Note: demo plan/log are seeded inside loadProgressInfo only when a signed mock quote exists.
+    if (!mockDataEnabled) {
       setPlanInput(''); setLogInput(''); setReporter(''); setGeneralNotes('');
       setShowSummary(false); setTodayStr(new Date().toISOString().split('T')[0]);
     }
@@ -454,7 +463,10 @@ export const ProgressPage: React.FC<ProgressPageProps> = ({ projectId, mockDataE
     return { minTime, maxTime, totalSpan: maxTime - minTime, todayTime };
   })();
 
-  const filteredItems = data ? data.items.filter((item: any) => filterFlag === 'Tất cả' || item.flag === filterFlag) : [];
+  // Keep all rows in the table but visually mark which Hạng mục match the active flag filter.
+  // This preserves columns (Đơn vị tính, KL hợp đồng, Lũy kế thực tế, % Hoàn thành, Biên độ lệch, Nhật ký lý do) "standing still" while
+  // the filter only changes the presentation of the Hạng mục (name/bullet).
+  const filteredItems = data ? data.items : [];
   const activeItems = data ? data.items.filter((item: any) => !item.actual_end_date && item.percent_complete < 100) : [];
   const delayedMeetingItems = data ? data.items.filter((item: any) => item.delay_days > 0) : [];
 
@@ -758,10 +770,9 @@ export const ProgressPage: React.FC<ProgressPageProps> = ({ projectId, mockDataE
             {data?.project_info?.project_name || "Theo dõi tiến độ thi công công trình"}
           </h1>
           <p style={{ fontSize: '1.3rem', color: 'rgba(0,0,0,0.58)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500 }}>
-        <MapPin size={13} color="#00754A" /> 
-        Nhật ký cập nhật cơ sở dữ liệu · Mã hợp đồng chính thức:{' '}
-        {/* SỬA: Lấy từ data động, nếu chưa có thì fallback về mã hợp đồng trong file mockProgressReport gốc */}
-        {data?.project_info?.contract_code || mockProgressReport.project_info.contract_code}
+  <MapPin size={13} color="#00754A" /> 
+  Nhật ký cập nhật cơ sở dữ liệu{contractSigned ? ' · Mã hợp đồng chính thức: ' : ''}
+  {contractSigned ? (data?.project_info?.contract_code || '') : ''}
       </p>
         </div>
       </div>
@@ -880,9 +891,9 @@ export const ProgressPage: React.FC<ProgressPageProps> = ({ projectId, mockDataE
                   <div style={{ display: 'flex', gap: '6px' }}>
                     {[
                       { id: 'Tất cả', label: `Toàn bộ (${stats.totalCount})`, color: '#666666', bg: '#f4f4f4' },
-                      { id: 'Đỏ', label: `🔴 Trễ Đỏ (${stats.redCount})`, color: '#c82014', bg: 'rgba(200, 32, 20, 0.05)' },
+                      { id: 'Đỏ', label: `🔴 Trễ (${stats.redCount})`, color: '#c82014', bg: 'rgba(200, 32, 20, 0.05)' },
                       { id: 'Vàng', label: `🟡 Nguy Cơ (${stats.yellowCount})`, color: '#cba258', bg: '#faf6ee' },
-                      { id: 'Xanh', label: `🟢 Xanh Đạt (${stats.greenCount})`, color: '#00754A', bg: '#d4e9e2' },
+                      { id: 'Xanh', label: `🟢 Đạt (${stats.greenCount})`, color: '#00754A', bg: '#d4e9e2' },
                     ].map(p => {
                       const isActive = filterFlag === p.id;
                       return (
@@ -918,23 +929,24 @@ export const ProgressPage: React.FC<ProgressPageProps> = ({ projectId, mockDataE
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredItems.length === 0 ? (
+                    {(!filteredItems || filteredItems.length === 0) ? (
                       <tr>
-                        <td colSpan={7} style={{ textAlign: 'center', color: 'rgba(0,0,0,0.58)', padding: '32px', fontSize: '1.3rem' }}>Không có hạng mục nào tương ứng với bộ lọc cờ cảnh báo.</td>
+                        <td colSpan={7} style={{ textAlign: 'center', color: 'rgba(0,0,0,0.58)', padding: '32px', fontSize: '1.3rem' }}>Không có hạng mục trong hồ sơ tiến độ.</td>
                       </tr>
                     ) : (
                       filteredItems.map((item: any, idx: number) => {
                         const isRed = item.flag === 'Đỏ'; const isYellow = item.flag === 'Vàng';
                         const bulletColor = isRed ? '#c82014' : isYellow ? '#cba258' : '#00754A';
+                        const matchesFilter = filterFlag === 'Tất cả' || item.flag === filterFlag;
 
                         return (
                           <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#f9f9f9' : '#ffffff', borderBottom: '1px solid #edebe9' }}>
                             <td style={{ padding: '12px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ color: bulletColor, fontSize: '14px' }}>●</span>
+                                <span style={{ color: matchesFilter ? bulletColor : '#b9b9b9', fontSize: '14px' }}>●</span>
                                 <div>
-                                  <div style={{ fontWeight: '700', color: '#1E3932', fontSize: '1.3rem' }}>{item.item_name}</div>
-                                  <span style={{ fontSize: '1.1rem', color: '#65757d', fontWeight: '600' }}>{item.item_code}</span>
+                                  <div style={{ fontWeight: '700', color: matchesFilter ? '#1E3932' : 'rgba(0,0,0,0.45)', fontSize: '1.3rem', opacity: matchesFilter ? 1 : 0.45, fontStyle: matchesFilter ? 'normal' : 'italic' }}>{item.item_name}</div>
+                                  <span style={{ fontSize: '1.1rem', color: matchesFilter ? '#65757d' : 'rgba(0,0,0,0.36)', fontWeight: 600 }}>{item.item_code}</span>
                                 </div>
                               </div>
                             </td>

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../services/api';
-import { mockPaymentBillingInfo, mockPaymentItems, mockQuoteItems, mockInvoices, mockPaymentHistory } from '../services/mockData';
+import { buildPaymentPdfFileName } from '../services/fileSlug';
+
+import { mockPaymentBillingInfo, mockPaymentItems, mockQuoteItems, mockInvoices, mockPaymentHistory, mockQuotes, mockAdditionalQuotes } from '../services/mockData';
 import {
   FileCheck,
   Scale,
@@ -111,7 +113,7 @@ const thStyle: React.CSSProperties = {
   fontWeight: '700',
   textTransform: 'uppercase',
   color: '#ffffff',
-  backgroundColor: '#1E3932', // Nền bảng màu House Green (PaymentPage style)
+  backgroundColor: '#1E3932',
 };
 
 const tdStyle: React.CSSProperties = {
@@ -134,6 +136,9 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ projectId, selectedPro
   const [history, setHistory] = useState<any[]>([]);
   const [quoteItems, setQuoteItems] = useState<any[]>([]);
   const [hasQuote, setHasQuote] = useState(false);
+  const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
+  const [selectedQuoteProject, setSelectedQuoteProject] = useState<string | null>(null);
+  const [dataSourceLabel, setDataSourceLabel] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
@@ -156,41 +161,105 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ projectId, selectedPro
     setError('');
     try {
       if (mockDataEnabled) {
-        setHistory(mockPaymentHistory);
-        setQuoteItems(mockQuoteItems);
-        setHasQuote(true);
+        setHistory(mockPaymentHistory || []);
+
+        const allMockQuotes = ([...(mockQuotes || []), ...(mockAdditionalQuotes || [])] as any[])
+          .filter(q => String(q.project_id) === String(projectId) || String(q.project_info?.project_id) === String(projectId));
+
+        const signed = allMockQuotes.find(q => !!q.contract_signed || !!q.project_info?.contract_signed) || null;
+
+        if (signed) {
+          setQuoteItems(signed.items || signed.project_info?.items || []);
+          setHasQuote(true);
+          setSelectedQuoteId((signed && (signed.quote_id || signed.id || signed.project_info?.quote_id || signed.project_info?.id)) || null);
+          setSelectedQuoteProject((signed && (signed.project_id || signed.project_info?.project_id || signed.project_info?.project_name)) || null);
+          setDataSourceLabel('signed-mock-quote');
+          setBillingMeta((prev) => ({
+            ...prev,
+            project_name: signed.project_info?.project_name || selectedProject?.name || prev.project_name || '',
+            client_name: signed.project_info?.client_name || selectedProject?.clientName || prev.client_name || '',
+            contract_code: signed.project_info?.contract_code || selectedProject?.contract_code || prev.contract_code || '',
+            contractor_name: signed.project_info?.contractor_name || selectedProject?.contractorName || prev.contractor_name || '',
+            contract_date: getShortDate(signed.project_info?.start_date || prev.contract_date || ''),
+            advance_deduction: signed.project_info?.advance_deduction || prev.advance_deduction || 0,
+            additional_value: signed.project_info?.additional_value || prev.additional_value || 0,
+          }));
+        } else {
+          setQuoteItems([]);
+          setHasQuote(false);
+          setSelectedQuoteId(null);
+          setSelectedQuoteProject(null);
+          setDataSourceLabel('none');
+          setBillingMeta((prev) => ({
+            ...prev,
+            project_name: selectedProject?.name || mockPaymentBillingInfo?.project_name || prev.project_name || '',
+            client_name: selectedProject?.clientName || mockPaymentBillingInfo?.client_name || prev.client_name || '',
+            contract_code: selectedProject?.contract_code || mockPaymentBillingInfo?.contract_code || prev.contract_code || '',
+            bank_account: mockPaymentBillingInfo?.bank_account || prev.bank_account || '',
+            bank_name: mockPaymentBillingInfo?.bank_name || prev.bank_name || '',
+            advance_deduction: mockPaymentBillingInfo?.advance_deduction || prev.advance_deduction || 0,
+            additional_value: mockPaymentBillingInfo?.additional_value || prev.additional_value || 0,
+          }));
+        }
+
+        setInvoices(mockInvoices || []);
       } else {
         const res = await api.getPayments(projectId);
-        setHistory(res.history);
-        setQuoteItems(res.quoteItems);
-        setHasQuote(res.hasQuote);
+        if (res) {
+          setHistory(res.history || []);
 
-        if (res.projectInfo) {
-          setBillingMeta((prev) => ({
-            ...prev,
-            project_name: res.projectInfo.project_name || selectedProject?.name || prev.project_name || '',
-            client_name: res.projectInfo.client_name || selectedProject?.clientName || selectedProject?.client_name || prev.client_name || '',
-            contract_code: res.projectInfo.contract_code || selectedProject?.contract_code || selectedProject?.contractCode || prev.contract_code || '',
-            contractor_name: res.projectInfo.contractor_name || selectedProject?.contractorName || selectedProject?.contractor_name || prev.contractor_name || '',
-            contract_date: getShortDate(res.projectInfo.start_date || selectedProject?.startDate || selectedProject?.start_date || prev.contract_date || ''),
-            advance_deduction: res.projectInfo.advance_deduction || 0,
-            additional_value: res.projectInfo.additional_value || 0,
-            bank_account: res.projectInfo.bank_account || prev.bank_account || '',
-            bank_name: res.projectInfo.bank_name || prev.bank_name || '',
-          }));
-        } else if (selectedProject) {
-          setBillingMeta((prev) => ({
-            ...prev,
-            project_name: selectedProject.name || selectedProject.project_name || prev.project_name || '',
-            client_name: selectedProject.clientName || selectedProject.client_name || prev.client_name || '',
-            contract_code: selectedProject.contract_code || selectedProject.contractCode || prev.contract_code || '',
-            contractor_name: selectedProject.contractorName || selectedProject.contractor_name || prev.contractor_name || '',
-            contract_date: getShortDate(selectedProject.startDate || selectedProject.start_date || prev.contract_date || ''),
-            advance_deduction: 0,
-            additional_value: 0,
-            bank_account: prev.bank_account || '',
-            bank_name: prev.bank_name || '',
-          }));
+          if (Array.isArray(res.quoteItems) && res.quoteItems.length > 0 && res.hasQuote === true) {
+            setQuoteItems(res.quoteItems);
+            setHasQuote(true);
+            setSelectedQuoteId((res as any).quote_id || (res as any).quoteId || null);
+            setSelectedQuoteProject((res as any).projectInfo?.project_name || null);
+            setDataSourceLabel('api-quote');
+          } else {
+            const signedEntry = Array.isArray(res.history) ? (res.history as any[]).find(h => !!h.contract_signed || !!h.project_info?.contract_signed) : null;
+            if (signedEntry) {
+              setQuoteItems(signedEntry.items || []);
+              setHasQuote(true);
+              setSelectedQuoteId((signedEntry && (signedEntry.quote_id || signedEntry.id || signedEntry.project_info?.quote_id || signedEntry.project_info?.id)) || null);
+              setSelectedQuoteProject((signedEntry && (signedEntry.project_id || signedEntry.project_info?.project_name)) || null);
+              setDataSourceLabel('api-history-signed');
+            } else {
+              setQuoteItems([]);
+              setHasQuote(false);
+              setSelectedQuoteId(null);
+              setSelectedQuoteProject(null);
+              setDataSourceLabel('none');
+            }
+          }
+
+          if (res.projectInfo) {
+            setBillingMeta((prev) => ({
+              ...prev,
+              project_name: res.projectInfo.project_name || selectedProject?.name || prev.project_name || '',
+              client_name: res.projectInfo.client_name || selectedProject?.clientName || selectedProject?.client_name || prev.client_name || '',
+              contract_code: res.projectInfo.contract_code || selectedProject?.contract_code || selectedProject?.contractCode || prev.contract_code || '',
+              contractor_name: res.projectInfo.contractor_name || selectedProject?.contractorName || selectedProject?.contractor_name || prev.contractor_name || '',
+              contract_date: getShortDate(res.projectInfo.start_date || selectedProject?.startDate || selectedProject?.start_date || prev.contract_date || ''),
+              advance_deduction: res.projectInfo.advance_deduction || 0,
+              additional_value: res.projectInfo.additional_value || 0,
+              bank_account: res.projectInfo.bank_account || prev.bank_account || '',
+              bank_name: res.projectInfo.bank_name || prev.bank_name || '',
+            }));
+          } else if (selectedProject) {
+            setBillingMeta((prev) => ({
+              ...prev,
+              project_name: selectedProject.name || selectedProject.project_name || prev.project_name || '',
+              client_name: selectedProject.clientName || selectedProject.client_name || prev.client_name || '',
+              contract_code: selectedProject.contract_code || selectedProject.contractCode || prev.contract_code || '',
+              contractor_name: selectedProject.contractorName || selectedProject.contractor_name || prev.contractor_name || '',
+              contract_date: getShortDate(selectedProject.startDate || selectedProject.start_date || prev.contract_date || ''),
+            }));
+          }
+
+          setInvoices(res.invoices || []);
+        } else {
+          setHistory([]);
+          setQuoteItems([]);
+          setHasQuote(false);
         }
       }
     } catch (err: any) {
@@ -234,22 +303,46 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ projectId, selectedPro
   }, [mockDataEnabled, quoteItems]);
 
   const loadDemoData = () => {
-    setBillingMeta({
-      project_name: mockPaymentBillingInfo?.project_name || '',
-      client_name: mockPaymentBillingInfo?.client_name || '',
-      contract_code: mockPaymentBillingInfo?.contract_code || '',
-      bank_account: mockPaymentBillingInfo?.bank_account || '',
-      bank_name: mockPaymentBillingInfo?.bank_name || '',
-      advance_deduction: mockPaymentBillingInfo?.advance_deduction || 0,
-      additional_value: mockPaymentBillingInfo?.additional_value || 0,
-      contractor_name: 'Công ty Xây dựng Đông Dương',
-      contract_date: '2026-06-01',
-    });
+    const allMockQuotes = ([...(mockQuotes || []), ...(mockAdditionalQuotes || [])] as any[]);
+    const signed = allMockQuotes.find(q => String(q.project_id) === String(projectId) && (q.contract_signed || q.project_info?.contract_signed));
+
+    if (signed) {
+      setBillingMeta((prev) => ({
+        ...prev,
+        project_name: signed.project_info?.project_name || prev.project_name || '',
+        client_name: signed.project_info?.client_name || prev.client_name || '',
+        contract_code: signed.project_info?.contract_code || prev.contract_code || '',
+        contractor_name: signed.project_info?.contractor_name || prev.contractor_name || '',
+        contract_date: signed.project_info?.start_date || prev.contract_date || '',
+        bank_account: prev.bank_account || mockPaymentBillingInfo?.bank_account || '',
+        bank_name: prev.bank_name || mockPaymentBillingInfo?.bank_name || '',
+        advance_deduction: signed.project_info?.advance_deduction || mockPaymentBillingInfo?.advance_deduction || 0,
+        additional_value: signed.project_info?.additional_value || mockPaymentBillingInfo?.additional_value || 0,
+      }));
+      setDataSourceLabel('signed-mock-quote');
+    } else {
+      setBillingMeta({
+        project_name: mockPaymentBillingInfo?.project_name || '',
+        client_name: mockPaymentBillingInfo?.client_name || '',
+        contract_code: mockPaymentBillingInfo?.contract_code || '',
+        bank_account: mockPaymentBillingInfo?.bank_account || '',
+        bank_name: mockPaymentBillingInfo?.bank_name || '',
+        advance_deduction: mockPaymentBillingInfo?.advance_deduction || 0,
+        additional_value: mockPaymentBillingInfo?.additional_value || 0,
+        contractor_name: 'Công ty Xây dựng Đông Dương',
+        contract_date: '2026-06-01',
+      });
+      setDataSourceLabel('mock-billing-fallback');
+    }
 
     setInvoices(mockInvoices);
 
-    if (mockQuoteItems && mockQuoteItems.length > 0) {
-      const seeded: AcceptanceRow[] = mockQuoteItems.map((q: any) => {
+    const itemsSource = (quoteItems && quoteItems.length > 0)
+      ? quoteItems
+      : (signed ? (signed.items || signed.project_info?.items || []) : (mockQuoteItems || []));
+
+    if (itemsSource && itemsSource.length > 0) {
+      const seeded: AcceptanceRow[] = itemsSource.map((q: any) => {
         const paymentItem = (mockPaymentItems || []).find((it: any) => it.item_code === q.item_code);
         return {
           item_code: q.item_code,
@@ -265,6 +358,9 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ projectId, selectedPro
       setAcceptanceDraft(seeded);
       setAcceptanceSaved(seeded);
       setAcceptanceSavedAt(new Date().toLocaleString('vi-VN'));
+    } else {
+      setAcceptanceDraft([]);
+      setAcceptanceSaved([]);
     }
   };
 
@@ -272,34 +368,29 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ projectId, selectedPro
     setAcceptanceDraft((prev) => {
       const next = [...prev];
       const targetRow = next[idx];
-      
+
       if (field === 'actual_quantity' && !targetRow.isExtra) {
-        // We are editing the ORIGINAL contract row
         const targetCode = targetRow.item_code;
         const targetName = targetRow.item_name;
         const newQty = parseFloat(value) || 0;
         const limit = targetRow.contract_quantity;
-        
+
         if (newQty > limit) {
-          // Find companion variation row (isExtra === true)
-          const companionVarIdx = next.findIndex((row, i) => 
-            i !== idx && 
-            !!row.isExtra && 
+          const companionVarIdx = next.findIndex((row, i) =>
+            i !== idx &&
+            !!row.isExtra &&
             ((targetCode && row.item_code === targetCode) || (!targetCode && row.item_name === targetName))
           );
-          
+
           if (companionVarIdx !== -1) {
-            // Yes, companion variation row exists!
             next[idx] = { ...targetRow, actual_quantity: limit };
             next[companionVarIdx] = { ...next[companionVarIdx], actual_quantity: newQty - limit };
             return next;
           }
         } else {
-          // If new quantity is less than or equal to contract limit,
-          // check if there's a companion variation row and set its actual quantity to 0
-          const companionVarIdx = next.findIndex((row, i) => 
-            i !== idx && 
-            !!row.isExtra && 
+          const companionVarIdx = next.findIndex((row, i) =>
+            i !== idx &&
+            !!row.isExtra &&
             ((targetCode && row.item_code === targetCode) || (!targetCode && row.item_name === targetName))
           );
           if (companionVarIdx !== -1) {
@@ -309,8 +400,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ projectId, selectedPro
           }
         }
       }
-      
-      // Default: regular update
+
       next[idx] = { ...targetRow, [field]: value };
       return next;
     });
@@ -343,15 +433,24 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ projectId, selectedPro
     const contractTotal = settlementRows.reduce((s, r) => s + r.contractValue, 0);
     const actualTotal = settlementRows.reduce((s, r) => s + r.actualValue, 0);
     const diffTotal = actualTotal - contractTotal;
-    return { contractTotal, actualTotal, diffTotal, vat: actualTotal * 0.1, totalPayment: actualTotal * 1.1 };
+    return { contractTotal, actualTotal, diffTotal };
   }, [settlementRows]);
 
+  // === CÔNG THỨC KHỚP PDF ===
+  // 1. KL hoàn thành = actualTotal
+  // 2. Phát sinh    = additional_value
+  // 3. Tạm ứng     = advance_deduction
+  // 4. Cộng trước VAT = KL hoàn thành + Phát sinh - Tạm ứng
+  // 5. VAT 10%     = Cộng trước VAT * 0.1
+  // 6. TỔNG SAU VAT = Cộng trước VAT + VAT
   const paymentCalc = useMemo(() => {
     const contractValue = settlementTotals.actualTotal;
     const additional = billingMeta.additional_value || 0;
     const advanceDeduction = billingMeta.advance_deduction || 0;
-    const vat = (contractValue + additional) * 0.1;
-    return { contractValue, additional, advanceDeduction, vat, totalPayment: contractValue + additional + vat - advanceDeduction };
+    const subtotal = contractValue + additional - advanceDeduction;
+    const vat = subtotal * 0.1;
+    const totalPayment = subtotal + vat;
+    return { contractValue, additional, advanceDeduction, subtotal, vat, totalPayment };
   }, [settlementTotals, billingMeta.additional_value, billingMeta.advance_deduction]);
 
   const updateInvoiceRow = (idx: number, field: keyof InvoiceRow, value: any) => {
@@ -395,6 +494,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ projectId, selectedPro
         advance_deduction: billingMeta.advance_deduction,
         additional_value: billingMeta.additional_value,
         contract_value: paymentCalc.contractValue,
+        subtotal: paymentCalc.subtotal,
+        vat: paymentCalc.vat,
         total_payment: paymentCalc.totalPayment,
       };
 
@@ -433,6 +534,21 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ projectId, selectedPro
       <div>
         <h1 style={{ fontSize: '2.4rem', fontWeight: '800', color: '#006241', marginBottom: '6px', letterSpacing: '-0.16px' }}>Hồ sơ Đề nghị Thanh toán công trình</h1>
         <p style={{ fontSize: '1.3rem', color: 'rgba(0,0,0,0.58)', margin: 0 }}>Nghiệm thu khối lượng, quyết toán hợp đồng A-B, đề nghị thanh toán và bảng kê hóa đơn thuế GTGT đầu vào.</p>
+      </div>
+
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <div style={{ padding: '8px 12px', background: mockDataEnabled ? '#fff8e6' : '#eefaf5', border: '1px solid #e6e6e6', borderRadius: '8px', fontSize: '1rem' }}>
+          <strong>Mode:</strong> {mockDataEnabled ? 'Mock Data' : 'API'}
+        </div>
+        <div style={{ padding: '8px 12px', background: '#f3f4f6', border: '1px solid #e6e6e6', borderRadius: '8px', fontSize: '1rem' }}>
+          <strong>Signed Quote:</strong> {selectedQuoteId || '— none —'}
+        </div>
+        <div style={{ padding: '8px 12px', background: '#f7f7f9', border: '1px solid #e6e6e6', borderRadius: '8px', fontSize: '1rem' }}>
+          <strong>Quote Project:</strong> {selectedQuoteProject || projectId || '— unknown —'}
+        </div>
+        <div style={{ padding: '8px 12px', background: '#f7f7f9', border: '1px solid #e6e6e6', borderRadius: '8px', fontSize: '1rem' }}>
+          <strong>Source:</strong> {dataSourceLabel || 'fallback'}
+        </div>
       </div>
 
       {error && (
@@ -476,13 +592,12 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ projectId, selectedPro
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
         <div style={panelStyle}>
-          {/* Thanh điều hướng Subtab phẳng nguyên bản */}
-          <div style={{ 
-            display: 'flex', 
-            gap: '16px', 
-            marginBottom: '24px', 
-            borderBottom: '2px solid #edebe9', 
-            paddingBottom: '0px' 
+          <div style={{
+            display: 'flex',
+            gap: '16px',
+            marginBottom: '24px',
+            borderBottom: '2px solid #edebe9',
+            paddingBottom: '0px'
           }}>
             {TABS.map((tab) => {
               const isActive = activeTab === tab.key;
@@ -514,30 +629,44 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ projectId, selectedPro
             })}
           </div>
 
-          {activeTab === 'nghiem_thu' && (
-            <AcceptanceTab
-              rows={acceptanceDraft} onUpdate={updateAcceptanceRow} onAdd={addAcceptanceRow}
-              onRemove={removeAcceptanceRow} onSave={saveAcceptance} dirty={acceptanceDirty} savedAt={acceptanceSavedAt}
-            />
-          )}
+          {!hasQuote ? (
+            <div style={{ ...panelStyle, maxWidth: '720px', margin: '24px auto', textAlign: 'center', padding: '40px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ backgroundColor: '#faf6ee', padding: '12px', borderRadius: '50%' }}><AlertTriangle size={36} color="#cba258" /></div>
+              <h2 style={{ fontSize: '1.6rem', fontWeight: '800', color: '#1E3932', margin: 0 }}>Chưa có Báo giá chốt để thực hiện Nghiệm thu / Thanh toán</h2>
+              <p style={{ fontSize: '1.25rem', color: 'rgba(0,0,0,0.58)', margin: 0 }}>Hệ thống cần một <strong>Báo giá đã ký kết</strong> cho dự án này để tạo cấu trúc nghiệm thu, quyết toán và đề nghị thanh toán. Vui lòng chuyển sang phân hệ <strong>Báo giá</strong> để chọn / phê duyệt phiên bản báo giá.</p>
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                {setParentActiveTab && (
+                  <button onClick={() => setParentActiveTab('quotes')} style={{ padding: '8px 18px', backgroundColor: '#cba258', color: '#ffffff', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}>Chuyển đến Báo giá</button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              {activeTab === 'nghiem_thu' && (
+                <AcceptanceTab
+                  rows={acceptanceDraft} onUpdate={updateAcceptanceRow} onAdd={addAcceptanceRow}
+                  onRemove={removeAcceptanceRow} onSave={saveAcceptance} dirty={acceptanceDirty} savedAt={acceptanceSavedAt}
+                />
+              )}
 
-          {activeTab === 'quyet_toan' && (
-            <SettlementTab rows={settlementRows} totals={settlementTotals} acceptanceDirty={acceptanceDirty} />
-          )}
+              {activeTab === 'quyet_toan' && (
+                <SettlementTab rows={settlementRows} totals={settlementTotals} acceptanceDirty={acceptanceDirty} />
+              )}
 
-          {activeTab === 'de_nghi_tt' && (
-            <PaymentRequestTab
-              meta={billingMeta} setMeta={setBillingMeta} calc={paymentCalc}
-              onSubmit={handleGenerate} processing={processing} acceptanceDirty={acceptanceDirty}
-            />
-          )}
+              {activeTab === 'de_nghi_tt' && (
+                <PaymentRequestTab
+                  meta={billingMeta} setMeta={setBillingMeta} calc={paymentCalc}
+                  onSubmit={handleGenerate} processing={processing} acceptanceDirty={acceptanceDirty}
+                />
+              )}
 
-          {activeTab === 'bang_ke' && (
-            <InvoiceTab rows={invoices} onUpdate={updateInvoiceRow} onAdd={addInvoiceRow} onRemove={removeInvoiceRow} totals={invoiceTotals} />
+              {activeTab === 'bang_ke' && (
+                <InvoiceTab rows={invoices} onUpdate={updateInvoiceRow} onAdd={addInvoiceRow} onRemove={removeInvoiceRow} totals={invoiceTotals} />
+              )}
+            </>
           )}
         </div>
 
-        {/* Lịch sử hồ sơ đã phát hành */}
         <div style={panelStyle}>
           <h2 style={{ fontSize: '1.6rem', fontWeight: '800', color: '#1E3932', marginBottom: '16px' }}>Lịch sử hồ sơ quyết toán đã phát hành</h2>
           {history.length === 0 ? (
@@ -606,7 +735,6 @@ const AcceptanceTab: React.FC<{
         {savedAt && <span style={{ fontSize: '1.15rem', color: 'rgba(0,0,0,0.4)', fontWeight: 500 }}>Lần lưu gần nhất: {savedAt}</span>}
       </div>
 
-      {/* Helper Instruction Box */}
       <div style={{
         background: 'rgba(0, 117, 74, 0.04)',
         border: '1px solid rgba(0, 117, 74, 0.15)',
@@ -649,7 +777,6 @@ const AcceptanceTab: React.FC<{
               </tr>
             </thead>
             <tbody>
-              {/* PHẦN I: HẠNG MỤC THEO HỢP ĐỒNG GỐC */}
               <tr style={{ backgroundColor: 'rgba(30, 57, 50, 0.08)' }}>
                 <td colSpan={10} style={{ padding: '12px 14px', fontWeight: '800', color: '#1E3932', fontSize: '1.3rem', textAlign: 'left', borderBottom: '2px solid #006241' }}>
                   PHẦN I: HẠNG MỤC THEO HỢP ĐỒNG GỐC
@@ -665,11 +792,10 @@ const AcceptanceTab: React.FC<{
                 originalItems.map(({ row, index }, seqIdx) => {
                   const lineTotal = row.actual_quantity * row.unit_price;
                   const overContract = row.actual_quantity !== row.contract_quantity;
-                  
-                  // Check if this item has a companion in the variation section
-                  const hasCompanion = rows.some((r, i) => 
-                    i !== index && 
-                    !!r.isExtra && 
+
+                  const hasCompanion = rows.some((r, i) =>
+                    i !== index &&
+                    !!r.isExtra &&
                     ((row.item_code && r.item_code === row.item_code) || (!row.item_code && r.item_name === row.item_name))
                   );
 
@@ -688,18 +814,18 @@ const AcceptanceTab: React.FC<{
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'right' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
-                          <input 
-                            type="number" 
-                            style={{ 
-                              ...inputStyle, 
-                              padding: '6px', 
-                              textAlign: 'right', 
-                              borderColor: overContract ? '#cba258' : '#d6dbde', 
+                          <input
+                            type="number"
+                            style={{
+                              ...inputStyle,
+                              padding: '6px',
+                              textAlign: 'right',
+                              borderColor: overContract ? '#cba258' : '#d6dbde',
                               backgroundColor: overContract ? '#faf6ee' : '#ffffff',
                               width: '100px'
-                            }} 
-                            value={row.actual_quantity} 
-                            onChange={(e) => onUpdate(index, 'actual_quantity', parseFloat(e.target.value) || 0)} 
+                            }}
+                            value={row.actual_quantity}
+                            onChange={(e) => onUpdate(index, 'actual_quantity', parseFloat(e.target.value) || 0)}
                           />
                           {hasCompanion && (
                             <span style={{ fontSize: '0.95rem', color: '#00754A', marginTop: '2px', fontWeight: 600, fontStyle: 'italic' }}>
@@ -723,7 +849,6 @@ const AcceptanceTab: React.FC<{
                 })
               )}
 
-              {/* PHẦN II: HẠNG MỤC PHÁT SINH / BỔ SUNG */}
               <tr style={{ backgroundColor: 'rgba(203, 162, 88, 0.12)' }}>
                 <td colSpan={10} style={{ padding: '12px 14px', fontWeight: '800', color: '#8c6212', fontSize: '1.3rem', textAlign: 'left', borderBottom: '2px solid #cba258' }}>
                   PHẦN II: HẠNG MỤC PHÁT SINH / BỔ SUNG (PHỤ LỤC)
@@ -788,24 +913,23 @@ const AcceptanceTab: React.FC<{
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
-        <button type="button" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '8px 16px', borderRadius: '50px', backgroundColor: '#ffffff', color: '#00754A', border: '1px solid #00754A', fontWeight: '700', fontSize: '1.2rem', cursor: 'pointer' }} onClick={onAdd}>
+        <button
+          type="button"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '8px 16px', borderRadius: '50px', backgroundColor: '#ffffff', color: '#00754A', border: '1px solid #00754A', fontWeight: '700', fontSize: '1.2rem', cursor: 'pointer' }}
+          onClick={onAdd}
+        >
           <Plus size={14} /> Thêm dòng phát sinh công trường
         </button>
-        <button
-          type="button" onClick={onSave} disabled={!dirty}
-          style={{ padding: '8px 24px', backgroundColor: dirty ? '#00754A' : '#eedebe9', color: dirty ? '#ffffff' : 'rgba(0,0,0,0.38)', border: 'none', borderRadius: '50px', fontSize: '1.25rem', fontWeight: '700', cursor: dirty ? 'pointer' : 'not-allowed', transition: 'all 0.2s' }}
-          onMouseDown={(e) => { if(dirty) e.currentTarget.style.transform = 'scale(0.95)'; }} onMouseUp={(e) => { if(dirty) e.currentTarget.style.transform = 'scale(1)'; }}
-        >
-          {dirty ? '💾 Lưu biên bản nghiệm thu' : '✓ Đã đồng bộ số liệu'}
-        </button>
+        {dirty && (
+          <button
+            type="button"
+            onClick={onSave}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '8px 16px', borderRadius: '50px', backgroundColor: '#00754A', color: '#ffffff', border: 'none', fontWeight: '700', fontSize: '1.2rem', cursor: 'pointer' }}
+          >
+            <CheckCircle2 size={14} /> Lưu nghiệm thu
+          </button>
+        )}
       </div>
-
-      {dirty && (
-        <div style={{ ...panelStyle, background: '#faf6ee', borderColor: '#cba258', borderLeft: '4px solid #cba258', color: '#33433d', padding: '12px 24px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.2rem', fontWeight: 500 }}>
-          <AlertTriangle size={14} color="#cba258" />
-          <span>Hệ thống phát hiện thay đổi chưa lưu. Vui lòng bấm nút lưu để cập nhật đồng bộ sang bảng Quyết toán và Đề nghị thanh toán.</span>
-        </div>
-      )}
     </div>
   );
 };
@@ -815,206 +939,293 @@ const AcceptanceTab: React.FC<{
 // =====================================================================================
 
 const SettlementTab: React.FC<{
-  rows: (AcceptanceRow & { contractValue: number; actualValue: number; diffValue: number })[];
-  totals: { contractTotal: number; actualTotal: number; diffTotal: number; vat: number; totalPayment: number };
+  rows: any[];
+  totals: { contractTotal: number; actualTotal: number; diffTotal: number };
   acceptanceDirty: boolean;
 }> = ({ rows, totals, acceptanceDirty }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ borderBottom: '2px solid #006241', paddingBottom: '12px', marginBottom: '8px' }}>
-        <h3 style={{ fontSize: '1.6rem', fontWeight: '800', color: '#006241', margin: 0 }}>BIÊN BẢN QUYẾT TOÁN KHỐI LƯỢNG ĐỐI CHIẾU A-B</h3>
+      <div style={{ borderBottom: '2px solid #006241', paddingBottom: '12px' }}>
+        <h3 style={{ fontSize: '1.6rem', fontWeight: '800', color: '#006241', margin: 0 }}>BẢNG QUYẾT TOÁN HỢP ĐỒNG A-B</h3>
       </div>
 
       {acceptanceDirty && (
-        <div style={{ fontSize: '1.2rem', color: '#cba258', background: '#faf6ee', padding: '10px 16px', borderRadius: '8px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <AlertTriangle size={14} /> Số liệu dưới đây dựa trên bản nghiệm thu cũ, vui lòng quay lại tab Nghiệm thu để lưu dữ liệu mới nhất.
+        <div style={{ fontSize: '1.2rem', color: '#cba258', background: '#faf6ee', padding: '10px 16px', borderRadius: '8px', fontWeight: 600 }}>
+          ⚠️ Số liệu khớp với bản lưu gần nhất. Để cập nhật, vui lòng Lưu nghiệm thu ở tab trước.
         </div>
       )}
 
-      {rows.length === 0 ? (
-        <div style={{ fontSize: '1.3rem', color: 'rgba(0,0,0,0.58)', textAlign: 'center', padding: '24px' }}>Chưa có cơ sở dữ liệu nghiệm thu để chạy quyết toán.</div>
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ ...thStyle, textAlign: 'left' }}>Hạng mục công việc thiết kế</th>
-                <th style={{ ...thStyle, textAlign: 'right', width: '120px' }}>KL Hợp đồng</th>
-                <th style={{ ...thStyle, textAlign: 'right', width: '140px' }}>Giá trị HĐ</th>
-                <th style={{ ...thStyle, textAlign: 'right', width: '120px' }}>KL Thực hiện</th>
-                <th style={{ ...thStyle, textAlign: 'right', width: '140px' }}>Giá trị Thực hiện</th>
-                <th style={{ ...thStyle, textAlign: 'right', width: '140px' }}>Biên độ lệch (±)</th>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th style={{ ...thStyle, width: '60px', textAlign: 'center' }}>STT</th>
+              <th style={{ ...thStyle, textAlign: 'left' }}>Hạng mục công việc</th>
+              <th style={{ ...thStyle, width: '90px', textAlign: 'right' }}>KL HĐ</th>
+              <th style={{ ...thStyle, width: '140px', textAlign: 'right' }}>GT Hợp đồng</th>
+              <th style={{ ...thStyle, width: '110px', textAlign: 'right' }}>KL Thực tế</th>
+              <th style={{ ...thStyle, width: '140px', textAlign: 'right' }}>GT Thực tế</th>
+              <th style={{ ...thStyle, width: '140px', textAlign: 'right' }}>Chênh lệch (VND)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, idx) => (
+              <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#f9f9f9' : '#ffffff', borderBottom: '1px solid #edebe9' }}>
+                <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
+                <td style={tdStyle}>{r.item_name}{r.isExtra ? <span style={{ marginLeft: 8, fontSize: '1rem', color: '#8c6212', fontWeight: 700 }}>(Phát sinh)</span> : null}</td>
+                <td style={{ ...tdStyle, textAlign: 'right' }}>{r.contract_quantity.toLocaleString('vi-VN')}</td>
+                <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtVND(r.contractValue)}</td>
+                <td style={{ ...tdStyle, textAlign: 'right' }}>{r.actual_quantity.toLocaleString('vi-VN')}</td>
+                <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: '#006241' }}>{fmtVND(r.actualValue)}</td>
+                <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: r.diffValue === 0 ? 'rgba(0,0,0,0.4)' : (r.diffValue > 0 ? '#00754A' : '#c82014') }}>{fmtVND(r.diffValue)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, idx) => (
-                <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#f9f9f9' : '#ffffff', borderBottom: '1px solid #edebe9' }}>
-                  <td style={tdStyle}><strong>{row.item_name}</strong></td>
-                  <td style={{ ...tdStyle, textAlign: 'right', color: '#444444' }}>{row.contract_quantity.toLocaleString('vi-VN')} {row.unit}</td>
-                  <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtVND(row.contractValue)}</td>
-                  <td style={{ ...tdStyle, textAlign: 'right', color: '#006241', fontWeight: 600 }}>{row.actual_quantity.toLocaleString('vi-VN')} {row.unit}</td>
-                  <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{fmtVND(row.actualValue)}</td>
-                  <td style={{ ...tdStyle, textAlign: 'right', fontWeight: '700', color: row.diffValue > 0 ? '#00754A' : row.diffValue < 0 ? '#c82014' : 'inherit' }}>
-                    {row.diffValue === 0 ? '—' : `${row.diffValue > 0 ? '+' : ''}${fmtVND(row.diffValue)}`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr style={{ backgroundColor: 'rgba(0, 117, 74, 0.02)', fontWeight: '700' }}>
-                <td style={{ ...tdStyle, padding: '14px' }}>TỔNG CỘNG ĐỐI CHIẾU</td>
-                <td style={tdStyle} />
-                <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtVND(totals.contractTotal)}</td>
-                <td style={tdStyle} />
-                <td style={{ ...tdStyle, textAlign: 'right', color: '#006241' }}>{fmtVND(totals.actualTotal)}</td>
-                <td style={{ ...tdStyle, textAlign: 'right', color: totals.diffTotal > 0 ? '#00754A' : totals.diffTotal < 0 ? '#c82014' : 'inherit' }}>
-                  {totals.diffTotal === 0 ? '—' : `${totals.diffTotal > 0 ? '+' : ''}${fmtVND(totals.diffTotal)}`}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
-
-      {/* Tóm tắt bảng cân đối quyết toán */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px', padding: '20px 24px', background: '#f2f0eb', borderRadius: '12px', border: '1px solid #edebe9', fontSize: '1.25rem', marginTop: '12px' }}>
-        <div style={{ color: 'rgba(0,0,0,0.58)', fontWeight: '600' }}>Giá trị hợp đồng ban đầu theo phê duyệt:</div>
-        <div style={{ textAlign: 'right', fontWeight: '700' }}>{totals.contractTotal.toLocaleString('vi-VN')} đ</div>
-
-        <div style={{ color: 'rgba(0,0,0,0.58)', fontWeight: '600' }}>Giá trị quyết toán thực tế khối lượng hoàn thành:</div>
-        <div style={{ textAlign: 'right', fontWeight: '700', color: '#006241' }}>{totals.actualTotal.toLocaleString('vi-VN')} đ</div>
-
-        <div style={{ color: 'rgba(0,0,0,0.58)', fontWeight: '600' }}>Biên độ chênh lệch bù trừ tăng giảm:</div>
-        <div style={{ textAlign: 'right', fontWeight: '700', color: totals.diffTotal > 0 ? '#00754A' : totals.diffTotal < 0 ? '#c82014' : 'inherit' }}>{fmtVND(totals.diffTotal)} đ</div>
-
-        <div style={{ color: 'rgba(0,0,0,0.58)', fontWeight: '600' }}>Thuế GTGT đối ứng dự ứng (10%):</div>
-        <div style={{ textAlign: 'right', fontWeight: '700' }}>{totals.vat.toLocaleString('vi-VN')} đ</div>
-
-        <div style={{ fontWeight: '800', paddingTop: '12px', borderTop: '2px solid #006241', fontSize: '1.35rem', color: '#1E3932' }}>TỔNG GIÁ TRỊ QUYẾT TOÁN THANH TOÁN (BAO GỒM THUẾ):</div>
-        <div style={{ textAlign: 'right', fontWeight: '800', paddingTop: '12px', borderTop: '2px solid #006241', color: '#00754A', fontSize: '1.6rem' }}>
-          {totals.totalPayment.toLocaleString('vi-VN')} <span style={{ fontSize: '1.2rem' }}>VNĐ</span>
-        </div>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ backgroundColor: 'rgba(0, 117, 74, 0.05)' }}>
+              <td colSpan={3} style={{ ...tdStyle, textAlign: 'right', fontWeight: 800, padding: '14px' }}>TỔNG CỘNG</td>
+              <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 800 }}>{fmtVND(totals.contractTotal)}</td>
+              <td style={tdStyle}></td>
+              <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 800, color: '#006241', fontSize: '1.4rem' }}>{fmtVND(totals.actualTotal)}</td>
+              <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 800, color: totals.diffTotal === 0 ? 'rgba(0,0,0,0.4)' : (totals.diffTotal > 0 ? '#00754A' : '#c82014'), fontSize: '1.4rem' }}>{fmtVND(totals.diffTotal)}</td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
   );
 };
 
 // =====================================================================================
-// Tab 3: Đề nghị thanh toán
+// Tab 3: Đề nghị thanh toán – Format đúng PDF Ho_So_Thanh_Toan_*.pdf
 // =====================================================================================
 
 const PaymentRequestTab: React.FC<{
   meta: BillingMeta;
   setMeta: React.Dispatch<React.SetStateAction<BillingMeta>>;
-  calc: { contractValue: number; additional: number; advanceDeduction: number; vat: number; totalPayment: number };
+  calc: { contractValue: number; additional: number; advanceDeduction: number; subtotal: number; vat: number; totalPayment: number };
   onSubmit: () => void;
   processing: boolean;
   acceptanceDirty: boolean;
 }> = ({ meta, setMeta, calc, onSubmit, processing, acceptanceDirty }) => {
-  const set = (field: keyof BillingMeta) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const isNumber = field === 'advance_deduction' || field === 'additional_value';
-    setMeta((prev) => ({ ...prev, [field]: isNumber ? parseFloat(e.target.value) || 0 : e.target.value }));
-  };
+  const setText = (field: keyof BillingMeta) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      setMeta((prev) => ({ ...prev, [field]: e.target.value }));
+
+  const setNum = (field: keyof BillingMeta) =>
+    (e: React.ChangeEvent<HTMLInputElement>) =>
+      setMeta((prev) => ({ ...prev, [field]: parseFloat(e.target.value) || 0 }));
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ borderBottom: '2px solid #006241', paddingBottom: '12px', marginBottom: '8px' }}>
-        <h3 style={{ fontSize: '1.6rem', fontWeight: '800', color: '#006241', margin: 0 }}>VĂN BẢN ĐỀ NGHỊ THANH TOÁN GIAI ĐOẠN</h3>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #006241', paddingBottom: '12px' }}>
+        <h3 style={{ fontSize: '1.6rem', fontWeight: '800', color: '#006241', margin: 0 }}>
+          VĂN BẢN ĐỀ NGHỊ THANH TOÁN GIAI ĐOẠN
+        </h3>
+        <span style={{ fontSize: '1rem', color: 'rgba(0,0,0,0.5)' }}>
+          Số: — /ĐNTT &nbsp;·&nbsp; Ngày: {new Date().toLocaleDateString('vi-VN')}
+        </span>
       </div>
 
-      {/* Form ma trận nhập Meta */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px 24px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={labelStyle}>Tên công trình dự án *</label>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <Building2 size={15} color="#666666" style={{ position: 'absolute', left: '12px' }} />
-            <input style={{ ...inputStyle, paddingLeft: '36px', width: '100%' }} value={meta.project_name} onChange={set('project_name')} required />
+      {/* Form nhập liệu */}
+      <div style={{ background: '#fafaf8', padding: '20px', borderRadius: '8px', border: '1px solid #edebe9' }}>
+        <div style={{ fontWeight: 800, color: '#1E3932', fontSize: '1.15rem', marginBottom: '14px' }}>
+          📝 Thông tin văn bản (chỉnh sửa trực tiếp)
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px' }}>
+          <div>
+            <label style={{ ...labelStyle, fontSize: '0.95rem' }}>Tên công trình *</label>
+            <input style={{ ...inputStyle, width: '100%' }} value={meta.project_name} onChange={setText('project_name')} />
           </div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={labelStyle}>Đơn vị chủ đầu tư / Kính gửi (Bên A) *</label>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <User size={15} color="#666666" style={{ position: 'absolute', left: '12px' }} />
-            <input style={{ ...inputStyle, paddingLeft: '36px', width: '100%' }} value={meta.client_name} onChange={set('client_name')} required />
+          <div>
+            <label style={{ ...labelStyle, fontSize: '0.95rem' }}>Mã hiệu / Số HĐ</label>
+            <input style={{ ...inputStyle, width: '100%' }} value={meta.contract_code} onChange={setText('contract_code')} />
           </div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={labelStyle}>Đơn vị nhà thầu thi công (Bên B)</label>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <Building2 size={15} color="#666666" style={{ position: 'absolute', left: '12px' }} />
-            <input style={{ ...inputStyle, paddingLeft: '36px', width: '100%' }} value={meta.contractor_name || ''} onChange={set('contractor_name')} />
+          <div>
+            <label style={{ ...labelStyle, fontSize: '0.95rem' }}>Chủ đầu tư (Kính gửi - Bên A) *</label>
+            <input style={{ ...inputStyle, width: '100%' }} value={meta.client_name} onChange={setText('client_name')} />
           </div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={labelStyle}>Mã hiệu / Số hợp đồng cơ sở</label>
-          <input style={inputStyle} value={meta.contract_code} onChange={set('contract_code')} />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={labelStyle}>Ngày ký kết hợp đồng</label>
-          <input type="date" style={inputStyle} value={meta.contract_date || ''} onChange={set('contract_date')} />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={labelStyle}>Số tài khoản thụ hưởng nhà thầu</label>
-          <input style={inputStyle} value={meta.bank_account} onChange={set('bank_account')} />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={labelStyle}>Tên ngân hàng hệ thống thương mại</label>
-          <input style={inputStyle} value={meta.bank_name} onChange={set('bank_name')} />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={labelStyle}>Bổ sung khối lượng phát sinh ngoài phụ lục (VNĐ)</label>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <Plus size={14} color="#666666" style={{ position: 'absolute', left: '12px' }} />
-            <input type="number" style={{ ...inputStyle, paddingLeft: '36px', width: '100%' }} value={meta.additional_value} onChange={set('additional_value')} />
+          <div>
+            <label style={{ ...labelStyle, fontSize: '0.95rem' }}>Nhà thầu (Bên đề nghị - Bên B)</label>
+            <input style={{ ...inputStyle, width: '100%' }} value={meta.contractor_name || ''} onChange={setText('contractor_name')} />
           </div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={labelStyle}>Khấu trừ tiền tạm ứng giai đoạn trước (VNĐ)</label>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <DollarSign size={14} color="#666666" style={{ position: 'absolute', left: '12px' }} />
-            <input type="number" style={{ ...inputStyle, paddingLeft: '36px', width: '100%', borderColor: '#c82014' }} value={meta.advance_deduction} onChange={set('advance_deduction')} />
+          <div>
+            <label style={{ ...labelStyle, fontSize: '0.95rem' }}>Ngày ký HĐ</label>
+            <input type="date" style={{ ...inputStyle, width: '100%' }} value={meta.contract_date || ''} onChange={setText('contract_date')} />
+          </div>
+          <div>
+            <label style={{ ...labelStyle, fontSize: '0.95rem' }}>Phát sinh bổ sung (VNĐ)</label>
+            <input type="number" style={{ ...inputStyle, width: '100%' }} value={meta.additional_value} onChange={setNum('additional_value')} />
+          </div>
+          <div>
+            <label style={{ ...labelStyle, fontSize: '0.95rem' }}>Tên ngân hàng</label>
+            <input style={{ ...inputStyle, width: '100%' }} value={meta.bank_name} onChange={setText('bank_name')} />
+          </div>
+          <div>
+            <label style={{ ...labelStyle, fontSize: '0.95rem' }}>Số tài khoản thụ hưởng</label>
+            <input style={{ ...inputStyle, width: '100%' }} value={meta.bank_account} onChange={setText('bank_account')} />
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label style={{ ...labelStyle, fontSize: '0.95rem' }}>Khấu trừ tiền tạm ứng (VNĐ)</label>
+            <input
+              type="number"
+              style={{ ...inputStyle, width: '100%', borderColor: '#c82014', backgroundColor: '#fef2f2' }}
+              value={meta.advance_deduction}
+              onChange={setNum('advance_deduction')}
+            />
           </div>
         </div>
       </div>
 
-      {acceptanceDirty && (
+      {/* Bản in preview khớp PDF */}
+      <div style={{ background: '#ffffff', padding: '40px 48px', borderRadius: '8px', border: '1px solid #edebe9' }}>
+
+        {/* Tiêu đề căn giữa */}
+        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#1E3932', letterSpacing: '0.5px' }}>
+            ĐỀ NGHỊ THANH TOÁN
+          </div>
+        </div>
+
+        {/* Header 4 dòng */}
+        <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', rowGap: '10px', marginBottom: '24px', fontSize: '1.2rem' }}>
+          <div style={{ fontWeight: 700 }}>Kính gửi:</div>
+          <div>{meta.client_name || '—'}</div>
+
+          <div style={{ fontWeight: 700 }}>Dự án:</div>
+          <div>{meta.project_name || '—'}</div>
+
+          <div style={{ fontWeight: 700 }}>Bên đề nghị:</div>
+          <div>{meta.contractor_name || '—'}</div>
+
+          <div style={{ fontWeight: 700 }}>Căn cứ Hợp đồng số:</div>
+          <div>
+            {meta.contract_code || '—'}
+            {meta.contract_date ? ` ký ngày ${meta.contract_date}` : ' ký ngày —'}
+          </div>
+        </div>
+
+                   {/* Bảng 6 dòng khớp PDF */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
+              <thead>
+                <tr>
+                  <th style={{ ...thStyle, width: '60px', textAlign: 'center' }}>STT</th>
+                  <th style={{ ...thStyle, textAlign: 'left' }}>Nội dung thanh toán</th>
+                  <th style={{ ...thStyle, width: '220px', textAlign: 'right' }}>Giá trị (VNĐ)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={{ ...tdStyle, textAlign: 'center' }}>1</td>
+                  <td style={tdStyle}>Giá trị KL hoàn thành thực tế (trước thuế)</td>
+                  <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{fmtVND(calc.contractValue)}</td>
+                </tr>
+                <tr>
+                  <td style={{ ...tdStyle, textAlign: 'center' }}>2</td>
+                  <td style={tdStyle}>Giá trị KL công việc phát sinh</td>
+                  <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{fmtVND(calc.additional)}</td>
+                </tr>
+                <tr>
+                  <td style={{ ...tdStyle, textAlign: 'center' }}>3</td>
+                  <td style={tdStyle}>Giảm trừ tiền tạm ứng đã nhận</td>
+                  <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#c82014' }}>−{fmtVND(calc.advanceDeduction)}</td>
+                </tr>
+                <tr>
+                  <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700 }}>4</td>
+                  <td style={{ ...tdStyle, fontWeight: 700 }}>Cộng giá trị đề nghị thanh toán (trước VAT)</td>
+                  <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 800, color: '#006241' }}>{fmtVND(calc.subtotal)}</td>
+                </tr>
+                <tr>
+                  <td style={{ ...tdStyle, textAlign: 'center' }}>5</td>
+                  <td style={tdStyle}>Thuế GTGT (10%)</td>
+                  <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{fmtVND(calc.vat)}</td>
+                </tr>
+                {/* Dòng 6: TỔNG CỘNG – đồng nhất màu với các dòng nội dung thanh toán */}
+                <tr style={{ backgroundColor: 'rgba(0, 117, 74, 0.04)' }}>
+                  <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 800 }}>6</td>
+                  <td style={{ ...tdStyle, fontWeight: 800, fontSize: '1.2rem', color: 'rgba(0,0,0,0.87)' }}>
+                    TỔNG CỘNG TIỀN ĐỀ NGHỊ THANH TOÁN (SAU VAT)
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 800, color: '#006241', fontSize: '1.4rem' }}>
+                    {fmtVND(calc.totalPayment)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+
+        {/* Hình thức thanh toán */}
+        <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', rowGap: '8px', marginBottom: '32px', fontSize: '1.2rem' }}>
+          <div style={{ fontWeight: 700 }}>Hình thức thanh toán:</div>
+          <div>Chuyển khoản</div>
+          <div style={{ fontWeight: 700 }}>Tài khoản thụ hưởng:</div>
+          <div>
+            {meta.bank_account || '—'}
+            {meta.bank_name ? ` tại ${meta.bank_name}` : ' tại —'}
+          </div>
+        </div>
+
+        {/* Khối ký tên 3 cột */}
+        <div style={{ display: 'flex', gap: '24px', marginTop: '40px' }}>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontWeight: 800, textTransform: 'uppercase' }}>Người lập</div>
+            <div style={{ fontSize: '0.95rem', color: 'rgba(0,0,0,0.6)', fontStyle: 'italic' }}>(Ký tên)</div>
+            <div style={{ height: '90px', marginTop: '8px' }} />
+          </div>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontWeight: 800, textTransform: 'uppercase' }}>Kế toán trưởng</div>
+            <div style={{ fontSize: '0.95rem', color: 'rgba(0,0,0,0.6)', fontStyle: 'italic' }}>(Ký tên)</div>
+            <div style={{ height: '90px', marginTop: '8px' }} />
+          </div>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontWeight: 800, textTransform: 'uppercase' }}>Đại diện Bên B</div>
+            <div style={{ fontSize: '0.95rem', color: 'rgba(0,0,0,0.6)', fontStyle: 'italic' }}>(Ký tên, đóng dấu)</div>
+            <div style={{ height: '90px', marginTop: '8px' }} />
+          </div>
+        </div>
+      </div>
+
+            {acceptanceDirty && (
         <div style={{ fontSize: '1.2rem', color: '#c82014', background: 'rgba(200, 32, 20, 0.05)', padding: '10px 16px', borderRadius: '8px', fontWeight: 600 }}>
           ⚠️ Tab Nghiệm thu đang có thay đổi chưa lưu — Vui lòng nhấn nút lưu nghiệm thu trước khi chạy engine xuất file.
         </div>
       )}
 
-      {/* Bảng tính toán bù trừ thanh toán */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '10px 24px', padding: '20px 24px', background: '#f2f0eb', borderRadius: '12px', border: '1px solid #edebe9', fontSize: '1.25rem', marginTop: '12px' }}>
-        <div style={{ color: 'rgba(0,0,0,0.58)', fontWeight: '600' }}>Giá trị khối lượng thi công thực tế đạt nghiệm thu:</div>
-        <div style={{ textAlign: 'right', fontWeight: '700' }}>{fmtVND(calc.contractValue)} đ</div>
-
-        <div style={{ color: 'rgba(0,0,0,0.58)', fontWeight: '600' }}>Giá trị bổ sung phát sinh lập bổ sung:</div>
-        <div style={{ textAlign: 'right', fontWeight: '700' }}>{fmtVND(calc.additional)} đ</div>
-
-        <div style={{ color: 'rgba(0,0,0,0.58)', fontWeight: '600' }}>Thuế GTGT đối ứng giai đoạn hoàn thành (10%):</div>
-        <div style={{ textAlign: 'right', fontWeight: '700' }}>{fmtVND(calc.vat)} đ</div>
-
-        <div style={{ color: '#c82014', fontWeight: '700' }}>Khấu trừ thu hồi tiền tạm ứng hợp đồng:</div>
-        <div style={{ textAlign: 'right', color: '#c82014', fontWeight: '700' }}>−{fmtVND(calc.advanceDeduction)} đ</div>
-
-        <div style={{ fontWeight: '800', paddingTop: '12px', borderTop: '2px solid #006241', fontSize: '1.35rem', color: '#1E3932' }}>GIÁ TRỊ THỰC TẾ ĐỀ NGHỊ THANH TOÁN KỲ NÀY:</div>
-        <div style={{ textAlign: 'right', fontWeight: '800', paddingTop: '12px', borderTop: '2px solid #006241', color: '#00754A', fontSize: '1.6rem' }}>
-          {calc.totalPayment.toLocaleString('vi-VN')} <span style={{ fontSize: '1.2rem' }}>VNĐ</span>
-        </div>
+      {/* Hàng chứa cảnh báo + nút Xuất PDF ở góc phải */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
+        <button
+          data-testid="generate-payment"
+          type="button"
+          disabled={processing}
+          onClick={onSubmit}
+          title={`Tên file: ${buildPaymentPdfFileName(meta.project_name)}`}
+          style={{
+            padding: '8px 18px',
+            backgroundColor: '#00754A',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '50px',
+            fontSize: '1.15rem',
+            fontWeight: '700',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            transition: 'all 0.2s',
+            boxShadow: '0 2px 8px rgba(0,117,74,0.18)',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#1E3932')}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#00754A')}
+        >
+          <FileText size={14} /> {processing ? 'Đang xuất...' : 'Xuất PDF'}
+        </button>
       </div>
-
-      <button
-        data-testid="generate-payment"
-        type="button" disabled={processing} onClick={onSubmit}
-        style={{ width: '100%', padding: '14px', backgroundColor: '#00754A', color: '#ffffff', border: 'none', borderRadius: '50px', fontSize: '1.35rem', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s', marginTop: '12px', boxShadow: '0 4px 12px rgba(0,117,74,0.15)' }}
-        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1E3932'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#00754A'}
-        onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'} onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-      >
-        <Wallet size={16} /> {processing ? 'Engine đang kết xuất tệp tin...' : 'Khởi chạy xuất bộ hồ sơ quyết toán (Excel Master + PDF)'}
-      </button>
     </div>
   );
 };
+
 
 // =====================================================================================
 // Tab 4: Bảng kê hóa đơn GTGT
@@ -1039,7 +1250,6 @@ const InvoiceTab: React.FC<{
         <div style={{ fontSize: '1.3rem', color: 'rgba(0,0,0,0.58)', textAlign: 'center', padding: '32px' }}>Chưa ghi nhận hóa đơn đầu vào nào. Nhấp "Thêm hóa đơn đầu vào" để lập bảng đối soát kế toán.</div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
-          
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>

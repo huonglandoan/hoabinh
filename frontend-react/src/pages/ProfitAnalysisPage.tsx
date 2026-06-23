@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import { mockProfitAnalysis, mockProfitHistory } from '../services/mockData';
+import { mockProfitAnalysis, mockProfitHistory, mockPaymentHistory, mockQuoteItems as mockPaymentQuoteItems, mockPaymentBillingInfo, mockInvoices as mockPaymentInvoices, mockQuotes, mockAdditionalQuotes, mockPaymentItems, mockInvoices, mockProgressHistory, mockProgressReport } from '../services/mockData';
 import {
   RefreshCw,
   FileText,
@@ -556,13 +556,69 @@ export const ProfitAnalysisPage: React.FC<ProfitAnalysisPageProps> = ({ projectI
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  // Payment-related state (to reuse payment loading logic inside ProfitAnalysis page)
+  const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
+  const [paymentQuoteItems, setPaymentQuoteItems] = useState<any[]>([]);
+  const [paymentHasQuote, setPaymentHasQuote] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(true);
+  const [paymentError, setPaymentError] = useState('');
+  const [paymentBillingMeta, setPaymentBillingMeta] = useState<any>({
+    project_name: '', client_name: '', contract_code: '', bank_account: '', bank_name: '', advance_deduction: 0, additional_value: 0,
+  });
+  const [paymentInvoices, setPaymentInvoices] = useState<any[]>([]);
+  const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
+
   const loadProfitInfo = async () => {
     setLoading(true);
     setError('');
     try {
       if (mockDataEnabled) {
-        setData(mockProfitAnalysis);
-        setHistory(mockProfitHistory);
+        // Try to create per-project profit mock from signed mockQuotes and payment mocks
+        const allMockQuotes = ([...(mockQuotes || []), ...(mockAdditionalQuotes || [])] as any[])
+          .filter(q => String(q.project_id) === String(projectId) || String(q.project_info?.project_id) === String(projectId));
+        const signed = allMockQuotes.find(q => !!q.contract_signed || !!q.project_info?.contract_signed) || null;
+
+        if (!signed) {
+          // No signed quote for this project in mocks -> no profit data
+          setSelectedQuoteId(null);
+          setData(null);
+          setHistory([]);
+        } else {
+          // Budget revenue from signed quote
+          const budget_revenue = signed.total_value ?? ((signed.items || []).reduce((s: number, it: any) => s + ((it.quoted_quantity || 0) * (it.original_unit_price || 0)), 0));
+
+          // Actual revenue: sum of mockPaymentItems that match quote item_codes (if available), else equal budget
+          const matchedPayments = (mockPaymentItems || []).filter((pi: any) => (signed.items || []).some((it: any) => it.item_code === pi.item_code));
+          const actual_revenue = matchedPayments.length > 0 ? matchedPayments.reduce((s: number, p: any) => s + (p.amount || 0), 0) : budget_revenue;
+
+          // Expenses: from mockInvoices (sum) or derive from payment amounts
+          const total_expenses = (mockInvoices || []).reduce((s: number, inv: any) => s + (inv.truoc_thue || 0), 0);
+
+          const net_profit = actual_revenue - total_expenses;
+
+          // Simple expense breakdown: reuse structure from global mockProfitAnalysis if exists, scaled to total_expenses
+          const baseExpenses = mockProfitAnalysis?.expenses || {};
+          const baseTotal = Object.values(baseExpenses).reduce((s: number, v: any) => s + (v || 0), 0) || 1;
+          const expenses = Object.fromEntries(Object.entries(baseExpenses).map(([k, v]: any) => [k, Math.round(((v || 0) / baseTotal) * total_expenses)]));
+
+          const perProjectMock = {
+            actual_revenue,
+            budget_revenue,
+            total_expenses,
+            invoices_count: (mockInvoices || []).length,
+            net_profit,
+            gross_profit: net_profit,
+            net_margin: budget_revenue > 0 ? (net_profit / budget_revenue) * 100 : 0,
+            profit_flag: net_profit >= 0 ? 'Xanh' : 'Đỏ',
+            expenses,
+            overrun_reasons: mockProfitAnalysis?.overrun_reasons || [],
+            delayed_items: mockProgressHistory?.length ? mockProgressReport?.items?.filter((it: any) => it.delay_days > 0).map((it: any) => ({ name: it.item_name, delay_days: it.delay_days })) : mockProfitAnalysis?.delayed_items || []
+          };
+
+          setData(perProjectMock);
+          setSelectedQuoteId((signed && (signed.quote_id || signed.id || signed.project_info?.quote_id || signed.project_info?.id)) || null);
+          setHistory(mockProfitHistory || []);
+        }
       } else {
         const res = await api.getProfitAnalysis(projectId);
         setData(res.reportData);
@@ -575,12 +631,89 @@ export const ProfitAnalysisPage: React.FC<ProfitAnalysisPageProps> = ({ projectI
     }
   };
 
+  const loadPaymentInfo = async () => {
+    setPaymentLoading(true);
+    setPaymentError('');
+    try {
+      if (mockDataEnabled) {
+        setPaymentHistory(mockPaymentHistory || []);
+
+        const allMockQuotes = ([...(mockQuotes || []), ...(mockAdditionalQuotes || [])] as any[])
+          .filter(q => String(q.project_id) === String(projectId) || String(q.project_info?.project_id) === String(projectId));
+
+        const signed = allMockQuotes.find(q => !!q.contract_signed || !!q.project_info?.contract_signed) || null;
+
+        if (signed) {
+          setPaymentQuoteItems(signed.items || signed.project_info?.items || []);
+          setPaymentHasQuote(true);
+          setPaymentBillingMeta((prev: any) => ({
+            ...prev,
+            project_name: signed.project_info?.project_name || prev.project_name || '',
+            client_name: signed.project_info?.client_name || prev.client_name || '',
+            contract_code: signed.project_info?.contract_code || prev.contract_code || '',
+            bank_account: signed.project_info?.bank_account || prev.bank_account || '',
+            bank_name: signed.project_info?.bank_name || prev.bank_name || '',
+            advance_deduction: signed.project_info?.advance_deduction || prev.advance_deduction || 0,
+            additional_value: signed.project_info?.additional_value || prev.additional_value || 0,
+          }));
+          setSelectedQuoteId((signed && (signed.quote_id || signed.id || signed.project_info?.quote_id || signed.project_info?.id)) || null);
+        } else {
+          setPaymentQuoteItems([]);
+          setPaymentHasQuote(false);
+          setPaymentBillingMeta((prev: any) => ({
+            ...prev,
+            project_name: prev.project_name || '',
+            client_name: prev.client_name || '',
+          }));
+          setSelectedQuoteId(null);
+        }
+
+        setPaymentInvoices(mockPaymentInvoices || []);
+      } else {
+        const res = await api.getPayments(projectId);
+        if (res) {
+          setPaymentHistory(res.history || []);
+
+          if (Array.isArray(res.quoteItems) && res.quoteItems.length > 0 && res.hasQuote === true) {
+            setPaymentQuoteItems(res.quoteItems);
+            setPaymentHasQuote(true);
+            setSelectedQuoteId((res as any).quote_id || (res as any).quoteId || null);
+          } else {
+            const signedEntry = Array.isArray(res.history) ? (res.history as any[]).find(h => !!h.contract_signed || !!h.project_info?.contract_signed) : null;
+            if (signedEntry) {
+              setPaymentQuoteItems(signedEntry.items || []);
+              setPaymentHasQuote(true);
+              setSelectedQuoteId((signedEntry && (signedEntry.quote_id || signedEntry.id || signedEntry.project_info?.quote_id || signedEntry.project_info?.id)) || null);
+            } else {
+              setPaymentQuoteItems([]);
+              setPaymentHasQuote(false);
+              setSelectedQuoteId(null);
+            }
+          }
+
+          setPaymentBillingMeta(res.projectInfo || paymentBillingMeta);
+          setPaymentInvoices(res.invoices || []);
+        } else {
+          setPaymentHistory([]);
+          setPaymentQuoteItems([]);
+          setPaymentHasQuote(false);
+        }
+      }
+    } catch (err: any) {
+      setPaymentError(err?.message || 'Lỗi khi tải thông tin thanh toán');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
   useEffect(() => {
   if (!projectId) return;
   setLoading(true);
   setData(null);
   setHistory([]);
   loadProfitInfo();
+  // also load payment info (non-fallback behavior)
+  loadPaymentInfo();
   }, [projectId, mockDataEnabled]);
 
   const handleRunAnalysis = async () => {
@@ -642,6 +775,16 @@ export const ProfitAnalysisPage: React.FC<ProfitAnalysisPageProps> = ({ projectI
               <FileText size={14} /> Tải Báo cáo (PDF)
             </a>
           )}
+        </div>
+      </div>
+
+      {/* Debug banner: show mock/api mode and which signed mock quote (if any) was selected for this project */}
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <div style={{ padding: '8px 12px', background: mockDataEnabled ? '#fff8e6' : '#eefaf5', border: '1px solid #e6e6e6', borderRadius: '8px', fontSize: '1rem' }}>
+          <strong>Mode:</strong> {mockDataEnabled ? 'Mock Data' : 'API'}
+        </div>
+        <div style={{ padding: '8px 12px', background: '#f3f4f6', border: '1px solid #e6e6e6', borderRadius: '8px', fontSize: '1rem' }}>
+          <strong>Signed Quote:</strong> {selectedQuoteId || '— none —'}
         </div>
       </div>
 
