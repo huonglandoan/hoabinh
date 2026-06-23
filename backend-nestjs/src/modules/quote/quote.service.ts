@@ -1,13 +1,18 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { ExcelBridgeService } from '../excel_brigde/excel-bridge.service';
+import { BackupService } from '../backup/backup.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
 @Injectable()
 export class QuoteService {
+  private readonly logger = new Logger(QuoteService.name);
   private readonly rootDataPath: string;
 
-  constructor(private readonly excelBridge: ExcelBridgeService) {
+  constructor(
+    private readonly excelBridge: ExcelBridgeService,
+    private readonly backupService: BackupService,
+  ) {
     this.rootDataPath = path.resolve(__dirname, '../../../../data');
   }
 
@@ -134,13 +139,30 @@ export class QuoteService {
     // Also overwrite the master copy baogia_{projectId}.json with this signed version!
     const masterDir = path.join(this.rootDataPath, 'master', projectId);
     const masterJsonPath = path.join(masterDir, `baogia_${projectId}.json`);
+
+    // Backup existing master files (json + pdf + xlsx) before overwriting
+    const candidates = [] as string[];
+    try {
+      candidates.push(masterJsonPath);
+      const prefix = !!quote.project_info?.is_variation_quote ? 'baogia_phatsinh_' : 'baogia_';
+      candidates.push(path.join(masterDir, `${prefix}${projectId}.xlsx`));
+      candidates.push(path.join(masterDir, `${prefix}${projectId}.pdf`));
+    } catch (e) {}
+
+    try {
+      await this.backupService.backupFiles(projectId, 'quotes', candidates, 'signQuote');
+    } catch (e) {
+      // log but continue
+      this.logger.warn('Backup before signQuote failed', e as any);
+    }
+
     await fs.writeFile(masterJsonPath, JSON.stringify(quote, null, 2), 'utf-8');
-    
-    // Copy the corresponding Excel & PDF files to master!
+
+    // Copy the corresponding Excel & PDF files to master (source from exports)
     const baseName = fileName.replace('.json', '');
     const isVar = !!quote.project_info?.is_variation_quote;
     const prefix = isVar ? 'baogia_phatsinh_' : 'baogia_';
-    
+
     try {
       const srcExcel = path.join(exportsDir, `${baseName}.xlsx`);
       const destExcel = path.join(masterDir, `${prefix}${projectId}.xlsx`);
@@ -148,7 +170,7 @@ export class QuoteService {
     } catch (e) {
       // Excel might not exist
     }
-    
+
     try {
       const srcPdf = path.join(exportsDir, `${baseName}.pdf`);
       const destPdf = path.join(masterDir, `${prefix}${projectId}.pdf`);

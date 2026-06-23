@@ -1,10 +1,11 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { exec } from 'child_process';
 import * as path from 'path';
 
 @Injectable()
 export class ExcelBridgeService {
   private readonly scriptsDir: string;
+  private readonly logger = new Logger(ExcelBridgeService.name);
 
   constructor() {
     // Project root is 2 levels up from src/modules/excel_bridge
@@ -28,8 +29,8 @@ export class ExcelBridgeService {
     return new Promise((resolve, reject) => {
       exec(command, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
         if (error) {
-          console.error(`Error executing script ${scriptName}:`, error);
-          console.error(`Stderr:`, stderr);
+          this.logger.error(`Error executing script ${scriptName}: ${error.message}`, error as any);
+          this.logger.error(`Stderr: ${stderr}`);
           return reject(
             new InternalServerErrorException(
               `Python Script ${scriptName} failed: ${error.message}. Stderr: ${stderr}`
@@ -44,8 +45,8 @@ export class ExcelBridgeService {
           const result = JSON.parse(lastLine);
           resolve(result);
         } catch (parseError) {
-          console.error(`Failed to parse script output for ${scriptName}:`, parseError);
-          console.error(`Raw stdout:`, stdout);
+          this.logger.error(`Failed to parse script output for ${scriptName}: ${parseError}`, parseError as any);
+          this.logger.debug(`Raw stdout: ${stdout}`);
           reject(
             new InternalServerErrorException(
               `Failed to parse output of script ${scriptName} as JSON. Raw output: ${stdout}`

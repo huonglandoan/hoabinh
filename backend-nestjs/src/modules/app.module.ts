@@ -6,6 +6,7 @@ import { ProgressModule } from './progress/progress.module';
 import { PaymentModule } from './payment/payment.module';
 import { ProfitAnalysisModule } from './profit_analysis/profit-analysis.module';
 import { FilesModule } from './files/files.module';
+import { BackupModule } from './backup/backup.module';
 
 @Module({
   imports: [
@@ -16,6 +17,8 @@ import { FilesModule } from './files/files.module';
     PaymentModule,
     ProfitAnalysisModule,
     FilesModule,
+    BackupModule,
   ],
+  providers: [],
 })
 export class AppModule {}

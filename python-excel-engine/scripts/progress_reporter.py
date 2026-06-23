@@ -26,6 +26,7 @@ from core_excel_utils import (
     FMT_PERCENT,
     COLOR_ZEBRA_BG
 )
+from core_excel_utils import vn_slug
 
 # PDF Font registration
 try:
@@ -266,9 +267,10 @@ def process_progress(site_log_path, plan_path, unit_prices_path=None, today_str=
     os.makedirs(exports_dir, exist_ok=True)
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # Save exports JSON
-    export_json_path = os.path.join(exports_dir, f"TienDo_{project_id}_{timestamp}.json")
+    project_slug = vn_slug(project_info.get('project_name') or project_id)
+
+    # Save exports JSON (use Vietnamese slug for readability)
+    export_json_path = os.path.join(exports_dir, f"TienDo_{project_slug}_{timestamp}.json")
     with open(export_json_path, 'w', encoding='utf-8') as f:
         json.dump(report, f, ensure_ascii=False, indent=4)
         
@@ -916,27 +918,48 @@ if __name__ == "__main__":
         excel_path = json_path.replace(".json", ".xlsx")
         build_excel_dashboard(data, excel_path)
         
-        # Copy excel to master
+        # Copy excel to master (with backup)
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(os.path.dirname(script_dir))
         master_excel_path = os.path.join(project_root, "data", "master", res['project_id'], "progress_dashboard.xlsx")
         import shutil
+        try:
+            backups_dir = os.path.join(project_root, 'data', 'backups', res['project_id'], 'progress')
+            os.makedirs(backups_dir, exist_ok=True)
+            if os.path.exists(master_excel_path):
+                shutil.copy2(master_excel_path, os.path.join(backups_dir, os.path.basename(master_excel_path) + f".backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"))
+        except Exception:
+            pass
         shutil.copy2(excel_path, master_excel_path)
         
         # 2. PDF
         pdf_path = json_path.replace(".json", ".pdf")
         build_pdf_report(data, pdf_path)
         
-        # Copy pdf to master
+        # Copy pdf to master (with backup)
         master_pdf_path = os.path.join(project_root, "data", "master", res['project_id'], "progress_report.pdf")
+        try:
+            backups_dir = os.path.join(project_root, 'data', 'backups', res['project_id'], 'progress')
+            os.makedirs(backups_dir, exist_ok=True)
+            if os.path.exists(master_pdf_path):
+                shutil.copy2(master_pdf_path, os.path.join(backups_dir, os.path.basename(master_pdf_path) + f".backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"))
+        except Exception:
+            pass
         shutil.copy2(pdf_path, master_pdf_path)
         
         # 3. CSV
         csv_path = json_path.replace(".json", ".csv")
         build_csv_export(data, csv_path)
         
-        # Copy csv to master
+        # Copy csv to master (with backup)
         master_csv_path = os.path.join(project_root, "data", "master", res['project_id'], "progress_data.csv")
+        try:
+            backups_dir = os.path.join(project_root, 'data', 'backups', res['project_id'], 'progress')
+            os.makedirs(backups_dir, exist_ok=True)
+            if os.path.exists(master_csv_path):
+                shutil.copy2(master_csv_path, os.path.join(backups_dir, os.path.basename(master_csv_path) + f".backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"))
+        except Exception:
+            pass
         shutil.copy2(csv_path, master_csv_path)
         
         res["excel_export_path"] = excel_path

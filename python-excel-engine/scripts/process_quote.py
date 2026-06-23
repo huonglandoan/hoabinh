@@ -2,6 +2,7 @@ import os
 import sys
 import json
 from datetime import datetime
+from core_excel_utils import vn_slug
 
 # Import sibling scripts if needed
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -137,7 +138,9 @@ def process_quote(quote_data_path, po_data_path, existing_quote_path=None, proje
     is_variation = project_info.get("is_variation_quote", False)
     prefix = "baogia_phatsinh_" if is_variation else "baogia_"
     
-    export_json_path = os.path.join(exports_dir, f"{prefix}{project_id}_{version}_{timestamp}.json")
+    # Build a human-friendly filename using project name slug (Vietnamese -> ascii)
+    project_slug = vn_slug(project_info.get('project_name') or project_id)
+    export_json_path = os.path.join(exports_dir, f"{prefix}{project_slug}_{version}_{timestamp}.json")
     with open(export_json_path, 'w', encoding='utf-8') as f:
         json.dump(processed_quote, f, ensure_ascii=False, indent=4)
         
@@ -180,14 +183,22 @@ if __name__ == "__main__":
         with open(res["output_file_path"], 'r', encoding='utf-8') as f:
             data = json.load(f)
         build_workbook(data, excel_path)
-        
-        # Copy to master
+
+        # Copy to master (with backup)
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(os.path.dirname(script_dir))
         is_var = data.get("project_info", {}).get("is_variation_quote", False)
         out_prefix = "baogia_phatsinh_" if is_var else "baogia_"
         master_excel_path = os.path.join(project_root, "data", "master", res['project_id'], f"{out_prefix}{res['project_id']}.xlsx")
         import shutil
+        # Backup existing master excel if exists
+        try:
+            backups_dir = os.path.join(project_root, 'data', 'backups', res['project_id'], 'quotes')
+            os.makedirs(backups_dir, exist_ok=True)
+            if os.path.exists(master_excel_path):
+                shutil.copy2(master_excel_path, os.path.join(backups_dir, os.path.basename(master_excel_path) + f".backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"))
+        except Exception:
+            pass
         shutil.copy2(excel_path, master_excel_path)
         res["excel_export_path"] = excel_path
         res["master_excel_path"] = master_excel_path
@@ -205,13 +216,20 @@ if __name__ == "__main__":
             data = json.load(f)
         build_pdf(data, pdf_path)
         
-        # Copy to master
+        # Copy to master (with backup)
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(os.path.dirname(script_dir))
         is_var = data.get("project_info", {}).get("is_variation_quote", False)
         out_prefix = "baogia_phatsinh_" if is_var else "baogia_"
         master_pdf_path = os.path.join(project_root, "data", "master", res['project_id'], f"{out_prefix}{res['project_id']}.pdf")
         import shutil
+        try:
+            backups_dir = os.path.join(project_root, 'data', 'backups', res['project_id'], 'quotes')
+            os.makedirs(backups_dir, exist_ok=True)
+            if os.path.exists(master_pdf_path):
+                shutil.copy2(master_pdf_path, os.path.join(backups_dir, os.path.basename(master_pdf_path) + f".backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"))
+        except Exception:
+            pass
         shutil.copy2(pdf_path, master_pdf_path)
         res["pdf_export_path"] = pdf_path
         res["master_pdf_path"] = master_pdf_path

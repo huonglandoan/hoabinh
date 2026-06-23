@@ -1,5 +1,6 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ExcelBridgeService } from '../excel_brigde/excel-bridge.service';
+import { BackupService } from '../backup/backup.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -7,9 +8,13 @@ import * as path from 'path';
 export class PaymentService {
   private readonly rootDataPath: string;
 
-  constructor(private readonly excelBridge: ExcelBridgeService) {
+  constructor(
+    private readonly excelBridge: ExcelBridgeService,
+    private readonly backupService: BackupService,
+  ) {
     this.rootDataPath = path.resolve(__dirname, '../../../../data');
   }
+  private readonly logger = new Logger(PaymentService.name);
 
   async getPaymentsInfo(projectId: string) {
     const masterJsonPath = path.join(this.rootDataPath, 'master', projectId, `baogia_${projectId}.json`);
@@ -77,15 +82,18 @@ export class PaymentService {
           formattedDate = `${datePart.slice(0, 4)}-${datePart.slice(4, 6)}-${datePart.slice(6, 8)} ${timePart.slice(0, 2)}:${timePart.slice(2, 4)}:${timePart.slice(4, 6)}`;
         }
         
-        const relativeBase = `exports/${projectId}/payments/Ho_So_Thanh_Toan_${projectId}_${ts}`;
-        const relativeCsv = `exports/${projectId}/payments/Bang_Ke_HDGTGT_${projectId}_${ts}`;
-        
+        // Use the actual discovered filenames (group.excel / group.pdf / group.csv)
+        // because the Python exporter may use project name slug instead of the numeric projectId
+        const excelPath = group.excel ? `exports/${projectId}/payments/${group.excel}` : null;
+        const pdfPath = group.pdf ? `exports/${projectId}/payments/${group.pdf}` : null;
+        const csvPath = group.csv ? `exports/${projectId}/payments/${group.csv}` : null;
+
         history.push({
           timestamp: ts,
           createdAt: formattedDate,
-          excelUrl: group.excel ? `/api/files/download?path=${relativeBase}.xlsx` : null,
-          pdfUrl: group.pdf ? `/api/files/download?path=${relativeBase}.pdf` : null,
-          csvUrl: group.csv ? `/api/files/download?path=${relativeCsv}.csv` : null,
+          excelUrl: excelPath ? `/api/files/download?path=${excelPath}` : null,
+          pdfUrl: pdfPath ? `/api/files/download?path=${pdfPath}` : null,
+          csvUrl: csvPath ? `/api/files/download?path=${csvPath}` : null,
         });
       }
       
@@ -142,6 +150,19 @@ export class PaymentService {
       payloadPath,
       projectId,
     ];
+
+    // Backup existing master payment files before generating new ones
+    try {
+      const masterDir = path.join(this.rootDataPath, 'master', projectId);
+      const candidates = [
+        path.join(masterDir, 'payment_profile.xlsx'),
+        path.join(masterDir, 'payment_profile.pdf'),
+        path.join(masterDir, 'invoices_data.csv'),
+      ];
+      await this.backupService.backupFiles(projectId, 'payments', candidates, 'generatePayment');
+    } catch (e) {
+      this.logger?.warn && this.logger.warn('Backup before generatePayment failed');
+    }
 
     // Execute Python script
     const result = await this.excelBridge.runScript('invoice_processor.py', args);

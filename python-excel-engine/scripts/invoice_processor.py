@@ -25,6 +25,7 @@ from core_excel_utils import (
     COLOR_ZEBRA_BG,
     COLOR_TOTAL_BG
 )
+from core_excel_utils import vn_slug
 
 # PDF Font registration
 try:
@@ -51,7 +52,7 @@ def generate_payment_package(input_data_path, project_id=None):
     invoices = data.get("invoices", [])
     
     project_name = billing_info.get("project_name", "Cong_Trinh")
-    project_slug = project_name.replace(" ", "_").replace("/", "_")
+    project_slug = vn_slug(project_name)
     
     project_id = project_id or project_slug
     
@@ -90,6 +91,18 @@ def generate_payment_package(input_data_path, project_id=None):
     
     # Copy to master
     import shutil
+    # Backup existing master files
+    try:
+        backups_dir = os.path.join(project_root, 'data', 'backups', project_id, 'payments')
+        os.makedirs(backups_dir, exist_ok=True)
+        if os.path.exists(master_excel_path):
+            shutil.copy2(master_excel_path, os.path.join(backups_dir, os.path.basename(master_excel_path) + f".backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"))
+        if os.path.exists(master_pdf_path):
+            shutil.copy2(master_pdf_path, os.path.join(backups_dir, os.path.basename(master_pdf_path) + f".backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"))
+        if os.path.exists(master_csv_path):
+            shutil.copy2(master_csv_path, os.path.join(backups_dir, os.path.basename(master_csv_path) + f".backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"))
+    except Exception:
+        pass
     shutil.copy2(excel_path, master_excel_path)
     shutil.copy2(pdf_path, master_pdf_path)
     shutil.copy2(csv_path, master_csv_path)

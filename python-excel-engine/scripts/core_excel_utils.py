@@ -1,6 +1,9 @@
 import os
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+import unicodedata
+import re
+from datetime import datetime
 
 # Design Tokens (Arial, 1F4E79 theme)
 FONT_NAME = "Arial"
@@ -86,3 +89,21 @@ def autofit_column_widths(ws, padding=3, min_width=10, max_width=50, manual_widt
 
 def recalculate_formulas(file_path):
     pass
+
+
+def vn_slug(text: str) -> str:
+    """Convert Vietnamese text to ASCII slug: remove diacritics, keep letters/numbers/underscore, replace spaces with underscore."""
+    if not text:
+        return 'unnamed'
+    # Normalize unicode and strip diacritics
+    nf = unicodedata.normalize('NFKD', str(text))
+    no_accents = ''.join(c for c in nf if not unicodedata.combining(c))
+    # Replace slashes and backslashes
+    no_accents = no_accents.replace('/', '_').replace('\\', '_')
+    # Remove any remaining non-alnum, non-space, non-underscore/dash
+    cleaned = re.sub(r'[^0-9A-Za-z\s_-]', '', no_accents)
+    # Collapse whitespace to single underscore
+    slug = re.sub(r'\s+', '_', cleaned).strip('_')
+    # Collapse multiple underscores or dashes
+    slug = re.sub(r'[_-]+', '_', slug)
+    return slug or 'unnamed'

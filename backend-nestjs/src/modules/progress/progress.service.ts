@@ -1,15 +1,22 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { ExcelBridgeService } from '../excel_brigde/excel-bridge.service';
+import { BackupService } from '../backup/backup.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { Logger } from '@nestjs/common';
 
 @Injectable()
 export class ProgressService {
   private readonly rootDataPath: string;
 
-  constructor(private readonly excelBridge: ExcelBridgeService) {
+  constructor(
+    private readonly excelBridge: ExcelBridgeService,
+    private readonly backupService: BackupService,
+  ) {
     this.rootDataPath = path.resolve(__dirname, '../../../../data');
+    this.logger = new Logger(ProgressService.name);
   }
+  private readonly logger: Logger;
 
   async getProgressInfo(projectId: string) {
     const planPath = path.join(this.rootDataPath, 'master', projectId, 'progress_plan.json');
@@ -227,6 +234,20 @@ export class ProgressService {
       todayStr || 'None',
       projectId,
     ];
+
+    // Backup existing master progress files before generating new ones
+    try {
+      const masterDir = path.join(this.rootDataPath, 'master', projectId);
+      const candidates = [
+        path.join(masterDir, 'progress_report.json'),
+        path.join(masterDir, 'progress_report.pdf'),
+        path.join(masterDir, 'progress_dashboard.xlsx'),
+        path.join(masterDir, 'progress_data.csv'),
+      ];
+      await this.backupService.backupFiles(projectId, 'progress', candidates, 'updateProgress');
+    } catch (e) {
+      this.logger.error('Backup before updateProgress failed', e as any);
+    }
 
     // Execute Python script
     const result = await this.excelBridge.runScript('progress_reporter.py', args);

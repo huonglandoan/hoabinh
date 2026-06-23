@@ -24,6 +24,7 @@ from core_excel_utils import (
     COLOR_ZEBRA_BG,
     COLOR_TOTAL_BG
 )
+from core_excel_utils import vn_slug
 
 # PDF Font registration
 try:
@@ -204,9 +205,10 @@ def analyze_profit(project_id):
     
     # Save files
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
+    project_slug = vn_slug(project_name)
+
     # Save exports JSON
-    export_json_path = os.path.join(exports_dir, f"profit_report_{timestamp}.json")
+    export_json_path = os.path.join(exports_dir, f"profit_report_{project_slug}_{timestamp}.json")
     with open(export_json_path, 'w', encoding='utf-8') as f:
         json.dump(profit_report, f, ensure_ascii=False, indent=4)
         
@@ -216,16 +218,25 @@ def analyze_profit(project_id):
         json.dump(profit_report, f, ensure_ascii=False, indent=4)
         
     # Build Excel and PDF
-    excel_path = os.path.join(exports_dir, f"profit_report_{timestamp}.xlsx")
+    excel_path = os.path.join(exports_dir, f"profit_report_{project_slug}_{timestamp}.xlsx")
     build_excel_profit(profit_report, excel_path)
     
-    pdf_path = os.path.join(exports_dir, f"profit_report_{timestamp}.pdf")
+    pdf_path = os.path.join(exports_dir, f"profit_report_{project_slug}_{timestamp}.pdf")
     build_pdf_profit(profit_report, pdf_path)
     
-    # Copy to master
+    # Copy to master (with backups)
     import shutil
     master_excel_path = os.path.join(master_dir, "profit_report.xlsx")
     master_pdf_path = os.path.join(master_dir, "profit_report.pdf")
+    try:
+        backups_dir = os.path.join(project_root, 'data', 'backups', project_id, 'profit')
+        os.makedirs(backups_dir, exist_ok=True)
+        if os.path.exists(master_excel_path):
+            shutil.copy2(master_excel_path, os.path.join(backups_dir, os.path.basename(master_excel_path) + f".backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"))
+        if os.path.exists(master_pdf_path):
+            shutil.copy2(master_pdf_path, os.path.join(backups_dir, os.path.basename(master_pdf_path) + f".backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"))
+    except Exception:
+        pass
     shutil.copy2(excel_path, master_excel_path)
     shutil.copy2(pdf_path, master_pdf_path)
     

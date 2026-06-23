@@ -1,0 +1,21 @@
+{
+  "actor": "generatePayment",
+  "ts": "2026-06-23T09:47:10.123Z",
+  "files": [
+    {
+      "src": "/Users/macbook/Desktop/T3/data/master/DA1/payment_profile.xlsx",
+      "dest": "/Users/macbook/Desktop/T3/data/backups/DA1/payments/payment_profile.xlsx.backup.2026-06-23T09-47-10-123Z",
+      "size": 11271
+    },
+    {
+      "src": "/Users/macbook/Desktop/T3/data/master/DA1/payment_profile.pdf",
+      "dest": "/Users/macbook/Desktop/T3/data/backups/DA1/payments/payment_profile.pdf.backup.2026-06-23T09-47-10-123Z",
+      "size": 110149
+    },
+    {
+      "src": "/Users/macbook/Desktop/T3/data/master/DA1/invoices_data.csv",
+      "dest": "/Users/macbook/Desktop/T3/data/backups/DA1/payments/invoices_data.csv.backup.2026-06-23T09-47-10-123Z",
+      "size": 122
+    }
+  ]
+}
